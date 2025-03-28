@@ -26,9 +26,22 @@ class TapOptiply(Tap):
     config_jsonschema = {
         "type": "object",
         "properties": {
-            "apiCredentials": {
+            "config": {
                 "type": "object",
                 "properties": {
+                    "username": {
+                        "type": "string",
+                        "description": "The username for authentication",
+                    },
+                    "password": {
+                        "type": "string",
+                        "description": "The password for authentication",
+                        "sensitive": True,
+                    },
+                    "account_id": {
+                        "type": "integer",
+                        "description": "The account ID to filter requests",
+                    },
                     "client_id": {
                         "type": "string",
                         "description": "The client ID for authentication",
@@ -38,22 +51,9 @@ class TapOptiply(Tap):
                         "description": "The client secret for authentication",
                         "sensitive": True,
                     },
-                    "account_id": {
-                        "type": "integer",
-                        "description": "The account ID to filter requests",
-                    },
-                    "password": {
-                        "type": "string",
-                        "description": "The password for authentication",
-                        "sensitive": True,
-                    },
                     "couplingId": {
                         "type": "integer",
                         "description": "The coupling ID",
-                    },
-                    "username": {
-                        "type": "string",
-                        "description": "The username for authentication",
                     },
                     "access_token": {
                         "type": "string",
@@ -80,23 +80,9 @@ class TapOptiply(Tap):
                     }
                 },
                 "required": ["username", "password", "account_id", "start_date"],
-            },
-            "hotglue_metadata": {
-                "type": "object",
-                "properties": {
-                    "metadata": {
-                        "type": "object",
-                        "properties": {
-                            "webshop_handle": {
-                                "type": "string",
-                                "description": "The webshop handle",
-                            },
-                        },
-                    },
-                },
-            },
+            }
         },
-        "required": ["apiCredentials"],
+        "required": ["config"],
     }
 
     def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
@@ -117,11 +103,12 @@ class TapOptiply(Tap):
             The API client.
         """
         if self._api is None:
+            config = self.config.get("config", {})
             self._api = OptiplyAPI(
-                username=self.config["apiCredentials"]["username"],
-                password=self.config["apiCredentials"]["password"],
-                account_id=self.config["apiCredentials"]["account_id"],
-                config=self.config,
+                username=config["username"],
+                password=config["password"],
+                account_id=config["account_id"],
+                config=config,
             )
         return self._api
 
@@ -131,8 +118,9 @@ class TapOptiply(Tap):
         Returns:
             A list of discovered streams.
         """
-        account_id = self.config["apiCredentials"]["account_id"]
-        start_date = self.config["apiCredentials"]["start_date"]
+        config = self.config.get("config", {})
+        account_id = config["account_id"]
+        start_date = config["start_date"]
         
         return [
             streams.ProductsStream(tap=self, api=self.api, context={"account_id": account_id, "start_date": start_date}),

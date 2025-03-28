@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import typing as t
 from importlib import resources
+from dateutil.parser import parse
 
 from singer_sdk import typing as th  # JSON Schema typing helpers
 from singer_sdk.streams import Stream
@@ -28,6 +29,47 @@ class TapOptiplyStream(Stream):
         super().__init__(tap=tap, **kwargs)
         self.api = api
         self.context = context or {}
+
+    def get_starting_time(self, context: t.Optional[dict] = None) -> t.Optional[str]:
+        """Get the starting time for incremental sync.
+
+        Args:
+            context: Stream partition or context dictionary.
+
+        Returns:
+            The starting time in ISO format.
+        """
+        config = self.config.get("config", {})
+        start_date = config.get("start_date")
+        if start_date:
+            start_date = parse(start_date)
+        rep_key = self.get_starting_timestamp(context)
+        return rep_key or start_date
+
+    def get_records(
+        self,
+        context: t.Optional[dict] = None,
+    ) -> t.Iterable[dict]:
+        """Return a generator of records.
+
+        Args:
+            context: Stream partition or context dictionary.
+
+        Yields:
+            Records.
+        """
+        params = {}
+        start_date = self.get_starting_time(context)
+        if start_date:
+            params["filter[updatedAt][GT]"] = start_date.isoformat()
+        if context and context.get("account_id"):
+            params["filter[accountId]"] = context["account_id"]
+
+        for record in self.api.get_records(self.name, params):
+            # Copy updatedAt from attributes to root level
+            if "attributes" in record and "updatedAt" in record["attributes"]:
+                record["updatedAt"] = record["attributes"]["updatedAt"]
+            yield record
 
 
 class ProductsStream(TapOptiplyStream):
@@ -67,17 +109,7 @@ class ProductsStream(TapOptiplyStream):
         Yields:
             Product records.
         """
-        params = {}
-        if context and context.get("start_date"):
-            params["filter[updatedAt][GT]"] = context["start_date"]
-        if context and context.get("account_id"):
-            params["filter[accountId]"] = context["account_id"]
-
-        for record in self.api.get_products(params):
-            # Copy updatedAt from attributes to root level
-            if "attributes" in record and "updatedAt" in record["attributes"]:
-                record["updatedAt"] = record["attributes"]["updatedAt"]
-            yield record
+        yield from super().get_records(context)
 
 
 class SuppliersStream(TapOptiplyStream):
@@ -146,17 +178,7 @@ class SuppliersStream(TapOptiplyStream):
         Yields:
             Supplier records.
         """
-        params = {}
-        if context and context.get("start_date"):
-            params["filter[updatedAt][GT]"] = context["start_date"]
-        if context and context.get("account_id"):
-            params["filter[accountId]"] = context["account_id"]
-
-        for record in self.api.get_suppliers(params):
-            # Copy updatedAt from attributes to root level
-            if "attributes" in record and "updatedAt" in record["attributes"]:
-                record["updatedAt"] = record["attributes"]["updatedAt"]
-            yield record
+        yield from super().get_records(context)
 
 
 class SupplierProductsStream(TapOptiplyStream):
@@ -228,17 +250,7 @@ class SupplierProductsStream(TapOptiplyStream):
         Yields:
             Supplier product records.
         """
-        params = {}
-        if context and context.get("start_date"):
-            params["filter[updatedAt][GT]"] = context["start_date"]
-        if context and context.get("account_id"):
-            params["filter[accountId]"] = context["account_id"]
-
-        for record in self.api.get_supplier_products(params):
-            # Copy updatedAt from attributes to root level
-            if "attributes" in record and "updatedAt" in record["attributes"]:
-                record["updatedAt"] = record["attributes"]["updatedAt"]
-            yield record
+        yield from super().get_records(context)
 
 
 class BuyOrdersStream(TapOptiplyStream):
@@ -302,17 +314,7 @@ class BuyOrdersStream(TapOptiplyStream):
         Yields:
             Buy order records.
         """
-        params = {}
-        if context and context.get("start_date"):
-            params["filter[updatedAt][GT]"] = context["start_date"]
-        if context and context.get("account_id"):
-            params["filter[accountId]"] = context["account_id"]
-
-        for record in self.api.get_buy_orders(params):
-            # Copy updatedAt from attributes to root level
-            if "attributes" in record and "updatedAt" in record["attributes"]:
-                record["updatedAt"] = record["attributes"]["updatedAt"]
-            yield record
+        yield from super().get_records(context)
 
 
 class SellOrdersStream(TapOptiplyStream):
@@ -369,17 +371,7 @@ class SellOrdersStream(TapOptiplyStream):
         Yields:
             Sell order records.
         """
-        params = {}
-        if context and context.get("start_date"):
-            params["filter[updatedAt][GT]"] = context["start_date"]
-        if context and context.get("account_id"):
-            params["filter[accountId]"] = context["account_id"]
-
-        for record in self.api.get_sell_orders(params):
-            # Copy updatedAt from attributes to root level
-            if "attributes" in record and "updatedAt" in record["attributes"]:
-                record["updatedAt"] = record["attributes"]["updatedAt"]
-            yield record
+        yield from super().get_records(context)
 
 
 class BuyOrderLinesStream(TapOptiplyStream):
@@ -435,17 +427,7 @@ class BuyOrderLinesStream(TapOptiplyStream):
         Yields:
             Buy order line records.
         """
-        params = {}
-        if context and context.get("start_date"):
-            params["filter[updatedAt][GT]"] = context["start_date"]
-        if context and context.get("account_id"):
-            params["filter[accountId]"] = context["account_id"]
-
-        for record in self.api.get_buy_order_lines(params):
-            # Copy updatedAt from attributes to root level
-            if "attributes" in record and "updatedAt" in record["attributes"]:
-                record["updatedAt"] = record["attributes"]["updatedAt"]
-            yield record
+        yield from super().get_records(context)
 
 
 class SellOrderLinesStream(TapOptiplyStream):
@@ -501,14 +483,4 @@ class SellOrderLinesStream(TapOptiplyStream):
         Yields:
             Sell order line records.
         """
-        params = {}
-        if context and context.get("start_date"):
-            params["filter[updatedAt][GT]"] = context["start_date"]
-        if context and context.get("account_id"):
-            params["filter[accountId]"] = context["account_id"]
-
-        for record in self.api.get_sell_order_lines(params):
-            # Copy updatedAt from attributes to root level
-            if "attributes" in record and "updatedAt" in record["attributes"]:
-                record["updatedAt"] = record["attributes"]["updatedAt"]
-            yield record
+        yield from super().get_records(context)

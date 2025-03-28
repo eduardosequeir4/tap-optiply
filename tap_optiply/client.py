@@ -6,9 +6,13 @@ import typing as t
 import time
 import requests
 import urllib.parse
+import logging
 from functools import wraps
 from requests.exceptions import RequestException, Timeout, HTTPError
 import datetime
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 def retry_with_backoff(max_retries: int = 3, initial_delay: float = 1.0, max_504_retries: int = 2):
     """Decorator to retry a function with exponential backoff.
@@ -34,13 +38,13 @@ def retry_with_backoff(max_retries: int = 3, initial_delay: float = 1.0, max_504
                     if e.response.status_code == 504:  # Gateway Timeout
                         gateway_timeout_count += 1
                         if gateway_timeout_count <= max_504_retries:
-                            print(f"504 Gateway Timeout (attempt {gateway_timeout_count}/{max_504_retries}). Retrying in {delay} seconds...")
+                            logger.warning(f"504 Gateway Timeout (attempt {gateway_timeout_count}/{max_504_retries}). Retrying in {delay} seconds...")
                             time.sleep(delay)
                             delay *= 2  # Exponential backoff
                             continue
                     retry_count += 1
                     if retry_count < max_retries:
-                        print(f"Attempt {retry_count} failed: {str(e)}. Retrying in {delay} seconds...")
+                        logger.warning(f"Attempt {retry_count} failed: {str(e)}. Retrying in {delay} seconds...")
                         time.sleep(delay)
                         delay *= 2  # Exponential backoff
                         continue
@@ -48,12 +52,12 @@ def retry_with_backoff(max_retries: int = 3, initial_delay: float = 1.0, max_504
                     last_exception = e
                     retry_count += 1
                     if retry_count < max_retries:
-                        print(f"Attempt {retry_count} failed: {str(e)}. Retrying in {delay} seconds...")
+                        logger.warning(f"Attempt {retry_count} failed: {str(e)}. Retrying in {delay} seconds...")
                         time.sleep(delay)
                         delay *= 2  # Exponential backoff
                         continue
                 
-                print(f"All retries failed. Last error: {str(last_exception)}")
+                logger.error(f"All retries failed. Last error: {str(last_exception)}")
                 raise last_exception
         return wrapper
     return decorator
@@ -77,26 +81,59 @@ class OptiplyAPI:
         self._account_id = account_id
         self._auth_url = "https://dashboard.optiply.nl/api/auth/oauth/token"
         self._config = config
-        self._token = config.get("apiCredentials", {}).get("access_token")
-        self._refresh_token = config.get("apiCredentials", {}).get("refresh_token")
-        self._token_expires_at = config.get("apiCredentials", {}).get("token_expires_at")
+        self._token = config.get("access_token")
+        self._refresh_token = config.get("refresh_token")
+        self._token_expires_at = config.get("token_expires_at")
         self._token_type = None
         self._scope = None
-        self._authorization = config.get("apiCredentials", {}).get("authorization")
+        self._authorization = config.get("authorization")
         
         # Set default headers
         self.session.headers.update({
             "Content-Type": "application/vnd.api+json",
             "Accept": "application/vnd.api+json",
+            "Authorization": self._authorization,
         })
         
         # Get initial token if not present or expired
         if not self._token or not self._token_expires_at or time.time() >= self._token_expires_at:
             self._update_token()
+            
+        # Update authorization header with token after getting it
+        if self._token and self._token_type:
+            self.session.headers["Authorization"] = f"{self._token_type.capitalize()} {self._token}"
+
+    def get_records(self, stream_name: str, params: dict) -> t.Iterable[dict]:
+        """Get records for a given stream.
+
+        Args:
+            stream_name: The name of the stream to get records for.
+            params: Query parameters.
+
+        Yields:
+            Records from the API.
+        """
+        # Convert snake_case to camelCase for API endpoint
+        parts = stream_name.split('_')
+        endpoint = parts[0] + ''.join(word.capitalize() for word in parts[1:])
+        url = f"{self.base_url}/{endpoint}"
+        while True:
+            response = self._make_request("GET", url, params=params)
+            data = response.json()
+            
+            for record in data.get("data", []):
+                yield record
+            
+            # Check for pagination
+            links = data.get("links", {})
+            if "next" not in links:
+                break
+            url = links["next"]
+            params = {}  # Clear params as they're included in the next URL
 
     def _update_token(self) -> None:
         """Update the access token."""
-        print("Attempting to get access token...")
+        logger.info("Attempting to get access token...")
         auth_response = self._make_request(
             "POST",
             f"{self._auth_url}?grant_type=password",
@@ -106,9 +143,9 @@ class OptiplyAPI:
             },
             data=f"username={urllib.parse.quote(self._username)}&password={urllib.parse.quote(self._password)}",
         )
-        print(f"Auth response status: {auth_response.status_code}")
-        print(f"Auth response headers: {auth_response.headers}")
-        print(f"Auth response body: {auth_response.text}")
+        logger.debug(f"Auth response status: {auth_response.status_code}")
+        logger.debug(f"Auth response headers: {auth_response.headers}")
+        logger.debug(f"Auth response body: {auth_response.text}")
         token_data = auth_response.json()
         
         self._token = token_data["access_token"]
@@ -127,19 +164,19 @@ class OptiplyAPI:
             "token_expires_at": self._token_expires_at,
         })
         
-        print(f"Got access token: {self._token[:10]}...")
-        print(f"Token type: {self._token_type}")
+        logger.info(f"Got access token: {self._token[:10]}...")
+        logger.debug(f"Token type: {self._token_type}")
         
         # Update authorization header
         self.session.headers["Authorization"] = f"{self._token_type.capitalize()} {self._token}"
-        print(f"Updated session headers: {self.session.headers}")
+        logger.debug(f"Updated session headers: {self.session.headers}")
 
     def _refresh_token_if_needed(self) -> None:
         """Refresh the token if it's expired or about to expire."""
         current_time = time.time()
         if not self._token or (self._token_expires_at and current_time >= self._token_expires_at):
             if self._refresh_token:
-                print("Attempting to refresh token...")
+                logger.info("Attempting to refresh token...")
                 auth_response = self._make_request(
                     "POST",
                     f"{self._auth_url}?grant_type=refresh_token",
@@ -149,9 +186,9 @@ class OptiplyAPI:
                     },
                     data=f"refresh_token={urllib.parse.quote(self._refresh_token)}",
                 )
-                print(f"Refresh response status: {auth_response.status_code}")
-                print(f"Refresh response headers: {auth_response.headers}")
-                print(f"Refresh response body: {auth_response.text}")
+                logger.debug(f"Refresh response status: {auth_response.status_code}")
+                logger.debug(f"Refresh response headers: {auth_response.headers}")
+                logger.debug(f"Refresh response body: {auth_response.text}")
                 token_data = auth_response.json()
                 
                 self._token = token_data["access_token"]
@@ -169,12 +206,12 @@ class OptiplyAPI:
                     "token_expires_at": self._token_expires_at,
                 })
                 
-                print(f"Got refreshed token: {self._token[:10]}...")
-                print(f"Token type: {self._token_type}")
+                logger.info(f"Got refreshed token: {self._token[:10]}...")
+                logger.debug(f"Token type: {self._token_type}")
                 
                 # Update authorization header
                 self.session.headers["Authorization"] = f"{self._token_type.capitalize()} {self._token}"
-                print(f"Updated session headers: {self.session.headers}")
+                logger.debug(f"Updated session headers: {self.session.headers}")
             else:
                 self._update_token()
 
@@ -218,7 +255,7 @@ class OptiplyAPI:
                 data = response.json()
                 records = data.get("data", [])
                 total_records += len(records)
-                print(f"Retrieved {len(records)} products (total: {total_records})")
+                logger.info(f"Retrieved {len(records)} products (total: {total_records})")
 
                 for record in records:
                     yield record
@@ -229,7 +266,7 @@ class OptiplyAPI:
                 offset += page_size
 
             except (Timeout, HTTPError) as e:
-                print(f"Error fetching products: {str(e)}")
+                logger.error(f"Error fetching products: {str(e)}")
                 raise
 
     def get_suppliers(self, params: dict | None = None) -> t.Iterator[dict]:
@@ -258,7 +295,7 @@ class OptiplyAPI:
                 data = response.json()
                 records = data.get("data", [])
                 total_records += len(records)
-                print(f"Retrieved {len(records)} suppliers (total: {total_records})")
+                logger.info(f"Retrieved {len(records)} suppliers (total: {total_records})")
 
                 for record in records:
                     yield record
@@ -269,7 +306,7 @@ class OptiplyAPI:
                 offset += page_size
 
             except (Timeout, HTTPError) as e:
-                print(f"Error fetching suppliers: {str(e)}")
+                logger.error(f"Error fetching suppliers: {str(e)}")
                 raise
 
     def get_supplier_products(self, params: dict | None = None) -> t.Iterator[dict]:
@@ -298,7 +335,7 @@ class OptiplyAPI:
                 data = response.json()
                 records = data.get("data", [])
                 total_records += len(records)
-                print(f"Retrieved {len(records)} supplier products (total: {total_records})")
+                logger.info(f"Retrieved {len(records)} supplier products (total: {total_records})")
 
                 for record in records:
                     yield record
@@ -309,7 +346,7 @@ class OptiplyAPI:
                 offset += page_size
 
             except (Timeout, HTTPError) as e:
-                print(f"Error fetching supplier products: {str(e)}")
+                logger.error(f"Error fetching supplier products: {str(e)}")
                 raise
 
     def get_buy_orders(self, params: dict | None = None) -> t.Iterator[dict]:
@@ -338,7 +375,7 @@ class OptiplyAPI:
                 data = response.json()
                 records = data.get("data", [])
                 total_records += len(records)
-                print(f"Retrieved {len(records)} buy orders (total: {total_records})")
+                logger.info(f"Retrieved {len(records)} buy orders (total: {total_records})")
 
                 for record in records:
                     yield record
@@ -349,7 +386,7 @@ class OptiplyAPI:
                 offset += page_size
 
             except (Timeout, HTTPError) as e:
-                print(f"Error fetching buy orders: {str(e)}")
+                logger.error(f"Error fetching buy orders: {str(e)}")
                 raise
 
     def get_sell_orders(self, params: dict | None = None) -> t.Iterator[dict]:
@@ -378,7 +415,7 @@ class OptiplyAPI:
                 data = response.json()
                 records = data.get("data", [])
                 total_records += len(records)
-                print(f"Retrieved {len(records)} sell orders (total: {total_records})")
+                logger.info(f"Retrieved {len(records)} sell orders (total: {total_records})")
 
                 for record in records:
                     yield record
@@ -389,7 +426,7 @@ class OptiplyAPI:
                 offset += page_size
 
             except (Timeout, HTTPError) as e:
-                print(f"Error fetching sell orders: {str(e)}")
+                logger.error(f"Error fetching sell orders: {str(e)}")
                 raise
 
     def get_buy_order_lines(self, params: dict | None = None) -> t.Iterator[dict]:
@@ -418,7 +455,7 @@ class OptiplyAPI:
                 data = response.json()
                 records = data.get("data", [])
                 total_records += len(records)
-                print(f"Retrieved {len(records)} buy order lines (total: {total_records})")
+                logger.info(f"Retrieved {len(records)} buy order lines (total: {total_records})")
 
                 for record in records:
                     yield record
@@ -429,7 +466,7 @@ class OptiplyAPI:
                 offset += page_size
 
             except (Timeout, HTTPError) as e:
-                print(f"Error fetching buy order lines: {str(e)}")
+                logger.error(f"Error fetching buy order lines: {str(e)}")
                 raise
 
     def get_sell_order_lines(self, params: dict | None = None) -> t.Iterator[dict]:
@@ -458,7 +495,7 @@ class OptiplyAPI:
                 data = response.json()
                 records = data.get("data", [])
                 total_records += len(records)
-                print(f"Retrieved {len(records)} sell order lines (total: {total_records})")
+                logger.info(f"Retrieved {len(records)} sell order lines (total: {total_records})")
 
                 for record in records:
                     yield record
@@ -469,7 +506,7 @@ class OptiplyAPI:
                 offset += page_size
 
             except (Timeout, HTTPError) as e:
-                print(f"Error fetching sell order lines: {str(e)}")
+                logger.error(f"Error fetching sell order lines: {str(e)}")
                 raise
 
     @retry_with_backoff(max_retries=3, initial_delay=1.0)
@@ -507,42 +544,42 @@ class OptiplyAPI:
             
             # Check for empty responses
             if response.status_code == 204:
-                print(f"Received empty response (204) from {url}")
+                logger.debug(f"Received empty response (204) from {url}")
                 return response
                 
             # Check for valid JSON response
             try:
                 response.json()
             except ValueError as e:
-                print(f"Invalid JSON response from {url}: {str(e)}")
-                print(f"Response content: {response.text[:200]}...")
+                logger.error(f"Invalid JSON response from {url}: {str(e)}")
+                logger.error(f"Response content: {response.text[:200]}...")
                 raise HTTPError(f"Invalid JSON response: {str(e)}")
                 
             return response
             
         except HTTPError as e:
             if e.response.status_code == 429:  # Too Many Requests
-                print(f"Rate limit exceeded for {url}")
+                logger.error(f"Rate limit exceeded for {url}")
                 raise
             elif e.response.status_code == 401:  # Unauthorized
-                print(f"Authentication failed for {url}")
+                logger.error(f"Authentication failed for {url}")
                 raise
             elif e.response.status_code == 403:  # Forbidden
-                print(f"Access forbidden for {url}")
+                logger.error(f"Access forbidden for {url}")
                 raise
             elif e.response.status_code == 404:  # Not Found
-                print(f"Resource not found at {url}")
+                logger.error(f"Resource not found at {url}")
                 raise
             elif e.response.status_code == 500:  # Internal Server Error
-                print(f"Server error for {url}")
+                logger.error(f"Server error for {url}")
                 raise
             else:
-                print(f"HTTP error {e.response.status_code} for {url}")
-                print(f"Response content: {e.response.text[:200]}...")
+                logger.error(f"HTTP error {e.response.status_code} for {url}")
+                logger.error(f"Response content: {e.response.text[:200]}...")
                 raise
         except Timeout as e:
-            print(f"Request timed out for {url}")
+            logger.error(f"Request timed out for {url}")
             raise
         except RequestException as e:
-            print(f"Request failed for {url}: {str(e)}")
+            logger.error(f"Request failed for {url}: {str(e)}")
             raise
