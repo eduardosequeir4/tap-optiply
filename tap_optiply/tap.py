@@ -26,63 +26,57 @@ class TapOptiply(Tap):
     config_jsonschema = {
         "type": "object",
         "properties": {
-            "config": {
-                "type": "object",
-                "properties": {
-                    "username": {
-                        "type": "string",
-                        "description": "The username for authentication",
-                    },
-                    "password": {
-                        "type": "string",
-                        "description": "The password for authentication",
-                        "sensitive": True,
-                    },
-                    "account_id": {
-                        "type": "integer",
-                        "description": "The account ID to filter requests",
-                    },
-                    "client_id": {
-                        "type": "string",
-                        "description": "The client ID for authentication",
-                    },
-                    "client_secret": {
-                        "type": "string",
-                        "description": "The client secret for authentication",
-                        "sensitive": True,
-                    },
-                    "couplingId": {
-                        "type": "integer",
-                        "description": "The coupling ID",
-                    },
-                    "access_token": {
-                        "type": "string",
-                        "description": "The access token for authentication",
-                        "sensitive": True,
-                    },
-                    "refresh_token": {
-                        "type": "string",
-                        "description": "The refresh token for authentication",
-                        "sensitive": True,
-                    },
-                    "token_expires_at": {
-                        "type": "number",
-                        "description": "Unix timestamp when the access token expires",
-                    },
-                    "start_date": {
-                        "type": "string",
-                        "description": "The start date for replication key in ISO format (e.g. 2025-02-17T15:31:58Z)",
-                    },
-                    "authorization": {
-                        "type": "string",
-                        "description": "The authorization token for authentication",
-                        "sensitive": True,
-                    }
-                },
-                "required": ["username", "password", "account_id", "start_date"],
+            "username": {
+                "type": "string",
+                "description": "The username for authentication",
+            },
+            "password": {
+                "type": "string",
+                "description": "The password for authentication",
+                "sensitive": True,
+            },
+            "account_id": {
+                "type": "integer",
+                "description": "The account ID to filter requests",
+            },
+            "client_id": {
+                "type": "string",
+                "description": "The client ID for authentication",
+            },
+            "client_secret": {
+                "type": "string",
+                "description": "The client secret for authentication",
+                "sensitive": True,
+            },
+            "couplingId": {
+                "type": "integer",
+                "description": "The coupling ID",
+            },
+            "access_token": {
+                "type": "string",
+                "description": "The access token for authentication",
+                "sensitive": True,
+            },
+            "refresh_token": {
+                "type": "string",
+                "description": "The refresh token for authentication",
+                "sensitive": True,
+            },
+            "token_expires_at": {
+                "type": "number",
+                "description": "Unix timestamp when the access token expires",
+            },
+            "start_date": {
+                "type": "string",
+                "description": "The start date for replication key in ISO format (e.g. 2025-02-17T15:31:58Z)",
+            },
+            "authorization": {
+                "type": "string",
+                "description": "The authorization token for authentication",
+                "sensitive": True,
             }
         },
-        "required": ["config"],
+        "required": ["username", "password", "account_id", "start_date"],
     }
 
     def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
@@ -103,7 +97,7 @@ class TapOptiply(Tap):
             The API client.
         """
         if self._api is None:
-            config = self.config.get("config", {})
+            config = dict(self.config)
             self._api = OptiplyAPI(
                 username=config["username"],
                 password=config["password"],
@@ -118,7 +112,7 @@ class TapOptiply(Tap):
         Returns:
             A list of discovered streams.
         """
-        config = self.config.get("config", {})
+        config = dict(self.config)
         account_id = config["account_id"]
         start_date = config["start_date"]
         
@@ -130,6 +124,7 @@ class TapOptiply(Tap):
             streams.BuyOrderLinesStream(tap=self, api=self.api, context={"account_id": account_id, "start_date": start_date}),
             streams.SellOrdersStream(tap=self, api=self.api, context={"account_id": account_id, "start_date": start_date}),
             streams.SellOrderLinesStream(tap=self, api=self.api, context={"account_id": account_id, "start_date": start_date}),
+            streams.ReceiptLinesStream(tap=self, api=self.api, context={"account_id": account_id, "start_date": start_date}),
         ]
 
     def get_stream_types(self) -> list[type[streams.TapOptiplyStream]]:
@@ -146,6 +141,7 @@ class TapOptiply(Tap):
             streams.SellOrdersStream,
             streams.BuyOrderLinesStream,
             streams.SellOrderLinesStream,
+            streams.ReceiptLinesStream,
         ]
 
     def get_stream_metadata(self) -> dict:

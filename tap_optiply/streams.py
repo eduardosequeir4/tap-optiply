@@ -39,7 +39,7 @@ class TapOptiplyStream(Stream):
         Returns:
             The starting time in ISO format.
         """
-        config = self.config.get("config", {})
+        config = dict(self.config)
         start_date = config.get("start_date")
         if start_date:
             start_date = parse(start_date)
@@ -482,5 +482,53 @@ class SellOrderLinesStream(TapOptiplyStream):
 
         Yields:
             Sell order line records.
+        """
+        yield from super().get_records(context)
+
+
+class ReceiptLinesStream(TapOptiplyStream):
+    """Define receipt lines stream."""
+
+    name = "receipt_lines"
+    primary_keys: t.ClassVar[list[str]] = ["id"]
+    replication_key = "updatedAt"
+
+    schema = th.PropertiesList(
+        th.Property("id", th.StringType, description="The receipt line's unique identifier"),
+        th.Property("type", th.StringType, description="The resource type"),
+        th.Property("updatedAt", th.DateTimeType, description="When the receipt line was last updated"),
+        th.Property("attributes", th.ObjectType(
+            th.Property("createdAt", th.DateTimeType, description="When the receipt line was created"),
+            th.Property("uuid", th.StringType, description="The receipt line's UUID"),
+            th.Property("quantity", th.NumberType, description="The quantity received"),
+            th.Property("occurred", th.DateTimeType, description="When the receipt occurred"),
+            th.Property("createdFromPublicApi", th.BooleanType, description="Whether created from public API"),
+            th.Property("buyOrderLineId", th.IntegerType, description="The ID of the buy order line"),
+            th.Property("updatedAt", th.DateTimeType, description="When the receipt line was last updated"),
+        )),
+        th.Property("relationships", th.ObjectType(
+            th.Property("buyOrderLine", th.ObjectType(
+                th.Property("links", th.ObjectType(
+                    th.Property("self", th.StringType),
+                    th.Property("related", th.StringType),
+                )),
+            )),
+        )),
+        th.Property("links", th.ObjectType(
+            th.Property("self", th.StringType),
+        )),
+    ).to_dict()
+
+    def get_records(
+        self,
+        context: t.Optional[dict] = None,
+    ) -> t.Iterable[dict]:
+        """Return a generator of receipt line records.
+
+        Args:
+            context: Stream partition or context dictionary.
+
+        Yields:
+            Receipt line records.
         """
         yield from super().get_records(context)
