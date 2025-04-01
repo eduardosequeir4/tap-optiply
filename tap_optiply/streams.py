@@ -84,16 +84,79 @@ class ProductsStream(TapOptiplyStream):
         th.Property("type", th.StringType, description="The resource type"),
         th.Property("updatedAt", th.DateTimeType, description="When the product was last updated"),
         th.Property("attributes", th.ObjectType(
-            th.Property("name", th.StringType, description="The product's name"),
+            th.Property("notBeingBought", th.BooleanType, description="Whether the product is not being bought"),
+            th.Property("createdAtRemote", th.DateTimeType, description="When the product was created remotely"),
+            th.Property("uuid", th.StringType, description="The product's UUID"),
+            th.Property("createdAt", th.DateTimeType, description="When the product was created"),
             th.Property("eanCode", th.StringType, description="The product's EAN code"),
+            th.Property("price", th.StringType, description="The product's price"),
+            th.Property("stockMeasurementUnit", th.StringType, description="The unit of stock measurement"),
+            th.Property("minimumStock", th.IntegerType, description="Minimum stock level"),
+            th.Property("assembled", th.BooleanType, description="Whether the product is assembled"),
+            th.Property("manualServiceLevel", th.StringType, description="Manual service level"),
+            th.Property("updatedAt", th.DateTimeType, description="When the product was last updated"),
+            th.Property("resumingPurchase", th.DateTimeType, description="When to resume purchasing"),
+            th.Property("ignored", th.BooleanType, description="Whether the product is ignored"),
+            th.Property("createdFromPublicApi", th.BooleanType, description="Whether created from public API"),
+            th.Property("remoteIdMap", th.ObjectType(), description="Remote ID mapping"),
+            th.Property("stockLevel", th.NumberType, description="Current stock level"),
+            th.Property("accountId", th.IntegerType, description="The account ID"),
+            th.Property("remoteDataSyncedToDate", th.DateTimeType, description="When remote data was last synced"),
+            th.Property("name", th.StringType, description="The product's name"),
+            th.Property("category", th.StringType, description="The product's category"),
+            th.Property("maximumStock", th.IntegerType, description="Maximum stock level"),
             th.Property("skuCode", th.StringType, description="The product's SKU code"),
             th.Property("articleCode", th.StringType, description="The product's article code"),
-            th.Property("price", th.StringType, description="The product's price"),
-            th.Property("stockLevel", th.NumberType, description="Current stock level"),
-            th.Property("minimumStock", th.IntegerType, description="Minimum stock level"),
-            th.Property("maximumStock", th.IntegerType, description="Maximum stock level"),
+            th.Property("novel", th.BooleanType, description="Whether the product is novel"),
+            th.Property("unlimitedStock", th.BooleanType, description="Whether stock is unlimited"),
             th.Property("status", th.StringType, description="The product's status"),
-            th.Property("updatedAt", th.DateTimeType, description="When the product was last updated"),
+        )),
+        th.Property("relationships", th.ObjectType(
+            th.Property("supplierProducts", th.ObjectType(
+                th.Property("links", th.ObjectType(
+                    th.Property("self", th.StringType),
+                    th.Property("related", th.StringType),
+                )),
+            )),
+            th.Property("sellOrderLines", th.ObjectType(
+                th.Property("links", th.ObjectType(
+                    th.Property("self", th.StringType),
+                    th.Property("related", th.StringType),
+                )),
+            )),
+            th.Property("productComposedFromCompositions", th.ObjectType(
+                th.Property("links", th.ObjectType(
+                    th.Property("self", th.StringType),
+                    th.Property("related", th.StringType),
+                )),
+            )),
+            th.Property("promotionProducts", th.ObjectType(
+                th.Property("links", th.ObjectType(
+                    th.Property("self", th.StringType),
+                    th.Property("related", th.StringType),
+                )),
+            )),
+            th.Property("account", th.ObjectType(
+                th.Property("links", th.ObjectType(
+                    th.Property("self", th.StringType),
+                    th.Property("related", th.StringType),
+                )),
+            )),
+            th.Property("productPartOfCompositions", th.ObjectType(
+                th.Property("links", th.ObjectType(
+                    th.Property("self", th.StringType),
+                    th.Property("related", th.StringType),
+                )),
+            )),
+            th.Property("buyOrderLines", th.ObjectType(
+                th.Property("links", th.ObjectType(
+                    th.Property("self", th.StringType),
+                    th.Property("related", th.StringType),
+                )),
+            )),
+        )),
+        th.Property("links", th.ObjectType(
+            th.Property("self", th.StringType),
         )),
     ).to_dict()
 
