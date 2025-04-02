@@ -97,7 +97,7 @@ class TapOptiply(Tap):
             The API client.
         """
         if self._api is None:
-            config = dict(self.config)
+            config = dict(self.config.get("config", {}))
             self._api = OptiplyAPI(
                 username=config["username"],
                 password=config["password"],
@@ -112,7 +112,7 @@ class TapOptiply(Tap):
         Returns:
             A list of discovered streams.
         """
-        config = dict(self.config)
+        config = dict(self.config.get("config", {}))
         account_id = config["account_id"]
         start_date = config["start_date"]
         

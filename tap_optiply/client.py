@@ -10,6 +10,7 @@ import logging
 from functools import wraps
 from requests.exceptions import RequestException, Timeout, HTTPError
 import datetime
+import base64
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -86,7 +87,19 @@ class OptiplyAPI:
         self._token_expires_at = config.get("token_expires_at")
         self._token_type = None
         self._scope = None
-        self._authorization = config.get("authorization")
+        
+        # Get client credentials from config
+        client_id = config.get("client_id")
+        client_secret = config.get("client_secret")
+        
+        # Create Basic Auth header
+        if client_id and client_secret:
+            auth_string = f"{client_id}:{client_secret}"
+            auth_bytes = auth_string.encode('ascii')
+            base64_auth = base64.b64encode(auth_bytes).decode('ascii')
+            self._authorization = f"Basic {base64_auth}"
+        else:
+            raise ValueError("client_id and client_secret are required for Basic Authentication")
         
         # Set default headers
         self.session.headers.update({
@@ -134,20 +147,28 @@ class OptiplyAPI:
     def _update_token(self) -> None:
         """Update the access token."""
         logger.info("Attempting to get access token...")
+        
+        # Create Basic Auth header for token request
+        auth_string = f"{self._config.get('client_id')}:{self._config.get('client_secret')}"
+        auth_bytes = auth_string.encode('ascii')
+        base64_auth = base64.b64encode(auth_bytes).decode('ascii')
+        basic_auth = f"Basic {base64_auth}"
+        
         auth_response = self._make_request(
             "POST",
-            f"{self._auth_url}?grant_type=password",
+            self._auth_url,
             headers={
                 "Content-Type": "application/x-www-form-urlencoded",
-                "Authorization": self._authorization,
+                "Authorization": basic_auth,
             },
-            data=f"username={urllib.parse.quote(self._username)}&password={urllib.parse.quote(self._password)}",
+            data={
+                "grant_type": "password",
+                "username": self._username,
+                "password": self._password,
+            },
         )
-        logger.debug(f"Auth response status: {auth_response.status_code}")
-        logger.debug(f"Auth response headers: {auth_response.headers}")
-        logger.debug(f"Auth response body: {auth_response.text}")
-        token_data = auth_response.json()
         
+        token_data = auth_response.json()
         self._token = token_data["access_token"]
         self._refresh_token = token_data["refresh_token"]
         self._token_type = token_data["token_type"]
@@ -167,8 +188,8 @@ class OptiplyAPI:
         logger.info(f"Got access token: {self._token[:10]}...")
         logger.debug(f"Token type: {self._token_type}")
         
-        # Update authorization header
-        self.session.headers["Authorization"] = f"{self._token_type.capitalize()} {self._token}"
+        # Update authorization header with Bearer token
+        self.session.headers["Authorization"] = f"Bearer {self._token}"
         logger.debug(f"Updated session headers: {self.session.headers}")
 
     def _refresh_token_if_needed(self) -> None:
@@ -177,20 +198,27 @@ class OptiplyAPI:
         if not self._token or (self._token_expires_at and current_time >= self._token_expires_at):
             if self._refresh_token:
                 logger.info("Attempting to refresh token...")
+                
+                # Create Basic Auth header for token refresh
+                auth_string = f"{self._config.get('client_id')}:{self._config.get('client_secret')}"
+                auth_bytes = auth_string.encode('ascii')
+                base64_auth = base64.b64encode(auth_bytes).decode('ascii')
+                basic_auth = f"Basic {base64_auth}"
+                
                 auth_response = self._make_request(
                     "POST",
-                    f"{self._auth_url}?grant_type=refresh_token",
+                    self._auth_url,
                     headers={
                         "Content-Type": "application/x-www-form-urlencoded",
-                        "Authorization": self._authorization,
+                        "Authorization": basic_auth,
                     },
-                    data=f"refresh_token={urllib.parse.quote(self._refresh_token)}",
+                    data={
+                        "grant_type": "refresh_token",
+                        "refresh_token": self._refresh_token,
+                    },
                 )
-                logger.debug(f"Refresh response status: {auth_response.status_code}")
-                logger.debug(f"Refresh response headers: {auth_response.headers}")
-                logger.debug(f"Refresh response body: {auth_response.text}")
-                token_data = auth_response.json()
                 
+                token_data = auth_response.json()
                 self._token = token_data["access_token"]
                 self._refresh_token = token_data.get("refresh_token", self._refresh_token)
                 self._token_type = token_data["token_type"]
@@ -209,8 +237,8 @@ class OptiplyAPI:
                 logger.info(f"Got refreshed token: {self._token[:10]}...")
                 logger.debug(f"Token type: {self._token_type}")
                 
-                # Update authorization header
-                self.session.headers["Authorization"] = f"{self._token_type.capitalize()} {self._token}"
+                # Update authorization header with Bearer token
+                self.session.headers["Authorization"] = f"Bearer {self._token}"
                 logger.debug(f"Updated session headers: {self.session.headers}")
             else:
                 self._update_token()
