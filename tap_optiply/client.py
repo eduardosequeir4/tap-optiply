@@ -81,14 +81,18 @@ class OptiplyAPI:
         self._password = password
         self._account_id = account_id
         self._auth_url = "https://dashboard.optiply.nl/api/auth/oauth/token"
-        self._config = config.get("config", {})
+        
+        # Get configuration from either nested 'config' object or root level
+        self._config = config.get("config", config)
+        
+        # Get token information
         self._token = self._config.get("access_token")
         self._refresh_token = self._config.get("refresh_token")
         self._token_expires_at = self._config.get("token_expires_at")
         self._token_type = None
         self._scope = None
         
-        # Get client credentials from config
+        # Get client credentials
         client_id = self._config.get("client_id")
         client_secret = self._config.get("client_secret")
         

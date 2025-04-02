@@ -97,11 +97,21 @@ class TapOptiply(Tap):
             The API client.
         """
         if self._api is None:
-            config = dict(self.config.get("config", {}))
+            # Get configuration from either nested 'config' object or root level
+            config = dict(self.config.get("config", self.config))
+            
+            # Required parameters
+            username = config.get("username")
+            password = config.get("password")
+            account_id = config.get("account_id")
+            
+            if not username or not password or not account_id:
+                raise ValueError("Missing required configuration: username, password, and account_id are required")
+            
             self._api = OptiplyAPI(
-                username=config["username"],
-                password=config["password"],
-                account_id=config["account_id"],
+                username=username,
+                password=password,
+                account_id=account_id,
                 config=config,
             )
         return self._api
@@ -112,17 +122,16 @@ class TapOptiply(Tap):
         Returns:
             A list of discovered streams.
         """
-        config = dict(self.config.get("config", {}))
-        if not config:
-            raise ValueError("Configuration is missing or empty")
-            
+        # Get configuration from either nested 'config' object or root level
+        config = dict(self.config.get("config", self.config))
+        
+        # Required parameters
         account_id = config.get("account_id")
-        if account_id is None:
+        if not account_id:
             raise ValueError("account_id is required in configuration")
             
-        start_date = config.get("start_date")
-        if start_date is None:
-            raise ValueError("start_date is required in configuration")
+        # Use default start_date if not provided
+        start_date = config.get("start_date", "2000-01-01T00:00:00.000Z")
         
         return [
             streams.ProductsStream(tap=self, api=self.api, context={"account_id": account_id, "start_date": start_date}),
