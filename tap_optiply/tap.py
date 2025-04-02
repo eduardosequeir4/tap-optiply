@@ -113,8 +113,16 @@ class TapOptiply(Tap):
             A list of discovered streams.
         """
         config = dict(self.config.get("config", {}))
-        account_id = config["account_id"]
-        start_date = config["start_date"]
+        if not config:
+            raise ValueError("Configuration is missing or empty")
+            
+        account_id = config.get("account_id")
+        if account_id is None:
+            raise ValueError("account_id is required in configuration")
+            
+        start_date = config.get("start_date")
+        if start_date is None:
+            raise ValueError("start_date is required in configuration")
         
         return [
             streams.ProductsStream(tap=self, api=self.api, context={"account_id": account_id, "start_date": start_date}),
@@ -150,6 +158,18 @@ class TapOptiply(Tap):
         Returns:
             Stream metadata.
         """
+        config = dict(self.config.get("config", {}))
+        if not config:
+            raise ValueError("Configuration is missing or empty")
+            
+        account_id = config.get("account_id")
+        if account_id is None:
+            raise ValueError("account_id is required in configuration")
+            
+        start_date = config.get("start_date")
+        if start_date is None:
+            raise ValueError("start_date is required in configuration")
+
         return {
             stream.name: {
                 "primary_keys": stream.primary_keys,

@@ -81,16 +81,16 @@ class OptiplyAPI:
         self._password = password
         self._account_id = account_id
         self._auth_url = "https://dashboard.optiply.nl/api/auth/oauth/token"
-        self._config = config
-        self._token = config.get("access_token")
-        self._refresh_token = config.get("refresh_token")
-        self._token_expires_at = config.get("token_expires_at")
+        self._config = config.get("config", {})
+        self._token = self._config.get("access_token")
+        self._refresh_token = self._config.get("refresh_token")
+        self._token_expires_at = self._config.get("token_expires_at")
         self._token_type = None
         self._scope = None
         
         # Get client credentials from config
-        client_id = config.get("client_id")
-        client_secret = config.get("client_secret")
+        client_id = self._config.get("client_id")
+        client_secret = self._config.get("client_secret")
         
         # Create Basic Auth header
         if client_id and client_secret:
