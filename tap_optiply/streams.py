@@ -365,6 +365,18 @@ class BuyOrdersStream(TapOptiplyStream):
         )),
     ).to_dict()
 
+    def get_child_context(self, record: dict, context: t.Optional[dict] = None) -> dict:
+        """Return a context dictionary for child streams.
+
+        Args:
+            record: The record from the parent stream.
+            context: The parent stream's context.
+
+        Returns:
+            A context dictionary for child streams.
+        """
+        return {"buyOrderId": record["id"]}
+
     def get_records(
         self,
         context: t.Optional[dict] = None,
@@ -401,10 +413,11 @@ class SellOrdersStream(TapOptiplyStream):
             th.Property("completed", th.DateTimeType, description="When the order was completed"),
             th.Property("uuid", th.StringType, description="The sell order's UUID"),
             th.Property("remoteIdMap", th.ObjectType(), description="Remote ID mapping"),
+            th.Property("assembly", th.BooleanType, description="Whether this is an assembly order"),
             th.Property("updatedAt", th.DateTimeType, description="When the sell order was last updated"),
         )),
         th.Property("relationships", th.ObjectType(
-            th.Property("sellOrderLines", th.ObjectType(
+            th.Property("customer", th.ObjectType(
                 th.Property("links", th.ObjectType(
                     th.Property("self", th.StringType),
                     th.Property("related", th.StringType),
@@ -416,11 +429,29 @@ class SellOrdersStream(TapOptiplyStream):
                     th.Property("related", th.StringType),
                 )),
             )),
+            th.Property("sellOrderLines", th.ObjectType(
+                th.Property("links", th.ObjectType(
+                    th.Property("self", th.StringType),
+                    th.Property("related", th.StringType),
+                )),
+            )),
         )),
         th.Property("links", th.ObjectType(
             th.Property("self", th.StringType),
         )),
     ).to_dict()
+
+    def get_child_context(self, record: dict, context: t.Optional[dict] = None) -> dict:
+        """Return a context dictionary for child streams.
+
+        Args:
+            record: The record from the parent stream.
+            context: The parent stream's context.
+
+        Returns:
+            A context dictionary for child streams.
+        """
+        return {"sellOrderId": record["id"]}
 
     def get_records(
         self,
@@ -442,7 +473,7 @@ class BuyOrderLinesStream(TapOptiplyStream):
 
     name = "buy_order_lines"
     primary_keys: t.ClassVar[list[str]] = ["id"]
-    replication_key = "updatedAt"
+    parent_stream_type = BuyOrdersStream
 
     schema = th.PropertiesList(
         th.Property("id", th.StringType, description="The buy order line's unique identifier"),
@@ -490,7 +521,13 @@ class BuyOrderLinesStream(TapOptiplyStream):
         Yields:
             Buy order line records.
         """
-        yield from super().get_records(context)
+        if context and "buyOrderId" in context:
+            # Use the parent's buyOrderId in the API request
+            params = {"filter[buyOrderLines][buyOrderId][EQ]": context["buyOrderId"]}
+            for record in self.api.get_records(self.name, params):
+                yield record
+        else:
+            yield from super().get_records(context)
 
 
 class SellOrderLinesStream(TapOptiplyStream):
@@ -498,7 +535,7 @@ class SellOrderLinesStream(TapOptiplyStream):
 
     name = "sell_order_lines"
     primary_keys: t.ClassVar[list[str]] = ["id"]
-    replication_key = "updatedAt"
+    parent_stream_type = SellOrdersStream
 
     schema = th.PropertiesList(
         th.Property("id", th.StringType, description="The sell order line's unique identifier"),
@@ -546,7 +583,13 @@ class SellOrderLinesStream(TapOptiplyStream):
         Yields:
             Sell order line records.
         """
-        yield from super().get_records(context)
+        if context and "sellOrderId" in context:
+            # Use the parent's sellOrderId in the API request
+            params = {"filter[sellOrderId]": context["sellOrderId"]}
+            for record in self.api.get_records(self.name, params):
+                yield record
+        else:
+            yield from super().get_records(context)
 
 
 class ReceiptLinesStream(TapOptiplyStream):
