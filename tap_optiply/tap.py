@@ -16,6 +16,18 @@ from singer_sdk.helpers.capabilities import (
 
 from tap_optiply import streams
 from tap_optiply.client import OptiplyAPI
+from tap_optiply.streams import (
+    BuyOrdersStream,
+    BuyOrderLinesStream,
+    SellOrdersStream,
+    SellOrderLinesStream,
+    ProductsStream,
+    SuppliersStream,
+    SupplierProductsStream,
+    ProductCompositionsStream,
+    PromotionsStream,
+    PromotionProductStream,
+)
 
 
 class TapOptiply(Tap):
@@ -142,6 +154,9 @@ class TapOptiply(Tap):
             streams.SellOrdersStream(tap=self, api=self.api, context={"account_id": account_id, "start_date": start_date}),
             streams.SellOrderLinesStream(tap=self, api=self.api, context={"account_id": account_id, "start_date": start_date}),
             streams.ReceiptLinesStream(tap=self, api=self.api, context={"account_id": account_id, "start_date": start_date}),
+            streams.ProductCompositionsStream(tap=self, api=self.api, context={"account_id": account_id, "start_date": start_date}),
+            streams.PromotionsStream(tap=self, api=self.api, context={"account_id": account_id, "start_date": start_date}),
+            streams.PromotionProductStream(tap=self, api=self.api, context={"account_id": account_id, "start_date": start_date}),
         ]
 
     def get_stream_types(self) -> list[type[streams.TapOptiplyStream]]:
@@ -159,6 +174,9 @@ class TapOptiply(Tap):
             streams.BuyOrderLinesStream,
             streams.SellOrderLinesStream,
             streams.ReceiptLinesStream,
+            streams.ProductCompositionsStream,
+            streams.PromotionsStream,
+            streams.PromotionProductStream,
         ]
 
     def get_stream_metadata(self) -> dict:

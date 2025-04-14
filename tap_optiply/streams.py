@@ -247,38 +247,36 @@ class SuppliersStream(TapOptiplyStream):
 
 
 class SupplierProductsStream(TapOptiplyStream):
-    """Define supplier products stream."""
+    """Supplier products stream."""
 
     name = "supplier_products"
-    primary_keys: t.ClassVar[list[str]] = ["id"]
+    path = "/supplierProducts"
+    primary_keys = ["id"]
     replication_key = "updatedAt"
-
     schema = th.PropertiesList(
         th.Property("id", th.StringType, description="The supplier product's unique identifier"),
         th.Property("type", th.StringType, description="The resource type"),
         th.Property("updatedAt", th.DateTimeType, description="When the supplier product was last updated"),
         th.Property("attributes", th.ObjectType(
-            th.Property("supplierId", th.IntegerType, description="The ID of the supplier"),
+            th.Property("uuid", th.StringType, description="The supplier product's UUID"),
+            th.Property("supplierId", th.IntegerType, description="The supplier ID"),
             th.Property("deliveryTime", th.IntegerType, description="Delivery time in days"),
             th.Property("notBeingBought", th.BooleanType, description="Whether the product is not being bought"),
-            th.Property("availabilityDate", th.DateTimeType, description="Date when the product becomes available"),
+            th.Property("availabilityDate", th.DateTimeType, description="When the product will be available"),
             th.Property("availability", th.BooleanType, description="Whether the product is available"),
-            th.Property("freeStock", th.NumberType, description="Amount of free stock"),
-            th.Property("uuid", th.StringType, description="The supplier product's UUID"),
+            th.Property("freeStock", th.IntegerType, description="Free stock quantity"),
             th.Property("createdAt", th.DateTimeType, description="When the supplier product was created"),
             th.Property("eanCode", th.StringType, description="The product's EAN code"),
             th.Property("price", th.StringType, description="The product's price"),
-            th.Property("preferred", th.BooleanType, description="Whether this is the preferred supplier product"),
+            th.Property("preferred", th.BooleanType, description="Whether this is a preferred supplier product"),
             th.Property("updatedAt", th.DateTimeType, description="When the supplier product was last updated"),
             th.Property("resumingPurchase", th.DateTimeType, description="When to resume purchasing"),
-            th.Property("productId", th.IntegerType, description="The ID of the product"),
+            th.Property("productId", th.IntegerType, description="The product ID"),
             th.Property("createdFromPublicApi", th.BooleanType, description="Whether created from public API"),
             th.Property("lotSize", th.IntegerType, description="Lot size for ordering"),
             th.Property("minimumPurchaseQuantity", th.IntegerType, description="Minimum purchase quantity"),
-            th.Property("weight", th.StringType, description="Product weight"),
-            th.Property("remoteIdMap", th.ObjectType(), description="Remote ID mapping"),
-            th.Property("volume", th.StringType, description="Product volume"),
-            th.Property("remoteDataSyncedToDate", th.DateTimeType, description="When remote data was last synced"),
+            th.Property("weight", th.NumberType, description="Product weight"),
+            th.Property("volume", th.NumberType, description="Product volume"),
             th.Property("name", th.StringType, description="The product's name"),
             th.Property("skuCode", th.StringType, description="The product's SKU code"),
             th.Property("articleCode", th.StringType, description="The product's article code"),
@@ -316,6 +314,130 @@ class SupplierProductsStream(TapOptiplyStream):
             Supplier product records.
         """
         yield from super().get_records(context)
+
+
+class ProductCompositionsStream(TapOptiplyStream):
+    """Product compositions stream."""
+
+    name = "product_compositions"
+    path = "/productCompositions"
+    primary_keys = ["id"]
+    replication_key = "updatedAt"
+    schema = th.PropertiesList(
+        th.Property("id", th.StringType, description="The product composition's unique identifier"),
+        th.Property("type", th.StringType, description="The resource type"),
+        th.Property("updatedAt", th.DateTimeType, description="When the product composition was last updated"),
+        th.Property("attributes", th.ObjectType(
+            th.Property("composedProductId", th.IntegerType, description="The composed product ID"),
+            th.Property("partProductId", th.IntegerType, description="The part product ID"),
+            th.Property("partQuantity", th.IntegerType, description="The quantity of parts needed"),
+            th.Property("createdAt", th.DateTimeType, description="When the product composition was created"),
+            th.Property("updatedAt", th.DateTimeType, description="When the product composition was last updated"),
+            th.Property("createdFromPublicApi", th.BooleanType, description="Whether created from public API"),
+            th.Property("uuid", th.StringType, description="The product composition's UUID"),
+        )),
+        th.Property("relationships", th.ObjectType(
+            th.Property("composedProduct", th.ObjectType(
+                th.Property("links", th.ObjectType(
+                    th.Property("self", th.StringType),
+                    th.Property("related", th.StringType),
+                )),
+            )),
+            th.Property("partProduct", th.ObjectType(
+                th.Property("links", th.ObjectType(
+                    th.Property("self", th.StringType),
+                    th.Property("related", th.StringType),
+                )),
+            )),
+        )),
+        th.Property("links", th.ObjectType(
+            th.Property("self", th.StringType),
+        )),
+    ).to_dict()
+
+
+class PromotionsStream(TapOptiplyStream):
+    """Promotions stream."""
+
+    name = "promotions"
+    path = "/promotions"
+    primary_keys = ["id"]
+    replication_key = "updatedAt"
+    schema = th.PropertiesList(
+        th.Property("id", th.StringType, description="The promotion's unique identifier"),
+        th.Property("type", th.StringType, description="The resource type"),
+        th.Property("updatedAt", th.DateTimeType, description="When the promotion was last updated"),
+        th.Property("attributes", th.ObjectType(
+            th.Property("uuid", th.StringType, description="The promotion's UUID"),
+            th.Property("endDate", th.DateTimeType, description="When the promotion ends"),
+            th.Property("upliftType", th.StringType, description="The type of uplift (absolute or percentage)"),
+            th.Property("productCount", th.IntegerType, description="Number of products in the promotion"),
+            th.Property("enabled", th.BooleanType, description="Whether the promotion is enabled"),
+            th.Property("accountId", th.IntegerType, description="The account ID"),
+            th.Property("createdAt", th.DateTimeType, description="When the promotion was created"),
+            th.Property("upliftIncrease", th.StringType, description="The uplift increase amount"),
+            th.Property("name", th.StringType, description="The promotion's name"),
+            th.Property("startDate", th.DateTimeType, description="When the promotion starts"),
+            th.Property("updatedAt", th.DateTimeType, description="When the promotion was last updated"),
+        )),
+        th.Property("relationships", th.ObjectType(
+            th.Property("promotionProducts", th.ObjectType(
+                th.Property("links", th.ObjectType(
+                    th.Property("self", th.StringType),
+                    th.Property("related", th.StringType),
+                )),
+            )),
+            th.Property("account", th.ObjectType(
+                th.Property("links", th.ObjectType(
+                    th.Property("self", th.StringType),
+                    th.Property("related", th.StringType),
+                )),
+            )),
+        )),
+        th.Property("links", th.ObjectType(
+            th.Property("self", th.StringType),
+        )),
+    ).to_dict()
+
+
+class PromotionProductStream(TapOptiplyStream):
+    """Promotion product stream."""
+
+    name = "promotion_products"
+    path = "/promotionProducts"
+    primary_keys = ["id"]
+    replication_key = "updatedAt"
+    schema = th.PropertiesList(
+        th.Property("id", th.StringType, description="The promotion product's unique identifier"),
+        th.Property("type", th.StringType, description="The resource type"),
+        th.Property("updatedAt", th.DateTimeType, description="When the promotion product was last updated"),
+        th.Property("attributes", th.ObjectType(
+            th.Property("specificUpliftType", th.StringType, description="The specific uplift type for this product"),
+            th.Property("createdAt", th.DateTimeType, description="When the promotion product was created"),
+            th.Property("uuid", th.StringType, description="The promotion product's UUID"),
+            th.Property("productId", th.IntegerType, description="The product ID"),
+            th.Property("specificUpliftIncrease", th.StringType, description="The specific uplift increase for this product"),
+            th.Property("promotionId", th.IntegerType, description="The promotion ID"),
+            th.Property("updatedAt", th.DateTimeType, description="When the promotion product was last updated"),
+        )),
+        th.Property("relationships", th.ObjectType(
+            th.Property("product", th.ObjectType(
+                th.Property("links", th.ObjectType(
+                    th.Property("self", th.StringType),
+                    th.Property("related", th.StringType),
+                )),
+            )),
+            th.Property("promotion", th.ObjectType(
+                th.Property("links", th.ObjectType(
+                    th.Property("self", th.StringType),
+                    th.Property("related", th.StringType),
+                )),
+            )),
+        )),
+        th.Property("links", th.ObjectType(
+            th.Property("self", th.StringType),
+        )),
+    ).to_dict()
 
 
 class BuyOrdersStream(TapOptiplyStream):
