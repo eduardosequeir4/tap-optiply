@@ -5,6 +5,7 @@ from __future__ import annotations
 import typing as t
 from importlib import resources
 from dateutil.parser import parse
+from typing import Iterator
 
 from singer_sdk import typing as th  # JSON Schema typing helpers
 from singer_sdk.streams import Stream
@@ -323,6 +324,7 @@ class SupplierProductsStream(TapOptiplyStream):
 
         for record in self._sync_records(params):
             yield record
+        yield from super().get_records(context)
 
 
 class BuyOrdersStream(TapOptiplyStream):
@@ -648,226 +650,74 @@ class ReceiptLinesStream(TapOptiplyStream):
 
 
 class ProductCompositionsStream(TapOptiplyStream):
-    """Product compositions stream."""
+    """ProductCompositions stream."""
 
     name = "product_compositions"
     path = "/productCompositions"
     primary_keys = ["id"]
     replication_key = "updatedAt"
     schema = th.PropertiesList(
-        th.Property("id", th.StringType, description="The product composition's unique identifier"),
-        th.Property("type", th.StringType, description="The resource type"),
-        th.Property("updatedAt", th.DateTimeType, description="When the product composition was last updated"),
-        th.Property(
-            "attributes",
-            th.ObjectType(
-                th.Property("createdAt", th.DateTimeType, description="When the product composition was created"),
-                th.Property("uuid", th.StringType, description="The product composition's UUID"),
-                th.Property("composedProductId", th.IntegerType, description="The ID of the composed product"),
-                th.Property("createdFromPublicApi", th.BooleanType, description="Whether created from public API"),
-                th.Property("partProductId", th.IntegerType, description="The ID of the part product"),
-                th.Property("partQuantity", th.IntegerType, description="The quantity of the part product"),
-                th.Property("updatedAt", th.DateTimeType, description="When the product composition was last updated"),
-            ),
-        ),
-        th.Property(
-            "relationships",
-            th.ObjectType(
-                th.Property(
-                    "composedProduct",
-                    th.ObjectType(
-                        th.Property(
-                            "links",
-                            th.ObjectType(
-                                th.Property("self", th.StringType),
-                                th.Property("related", th.StringType),
-                            ),
-                        ),
-                    ),
-                ),
-                th.Property(
-                    "partProduct",
-                    th.ObjectType(
-                        th.Property(
-                            "links",
-                            th.ObjectType(
-                                th.Property("self", th.StringType),
-                                th.Property("related", th.StringType),
-                            ),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-        th.Property(
-            "links",
-            th.ObjectType(
-                th.Property("self", th.StringType),
-            ),
-        ),
+        th.Property("id", th.StringType),
+        th.Property("type", th.StringType),
+        th.Property("updatedAt", th.DateTimeType),
+        th.Property("attributes", th.ObjectType(
+            th.Property("productId", th.StringType),
+            th.Property("componentId", th.StringType),
+            th.Property("quantity", th.NumberType),
+            th.Property("unit", th.StringType),
+            th.Property("createdAt", th.DateTimeType),
+            th.Property("updatedAt", th.DateTimeType),
+        )),
+        th.Property("relationships", th.ObjectType(
+            th.Property("product", th.ObjectType(
+                th.Property("data", th.ObjectType(
+                    th.Property("id", th.StringType),
+                    th.Property("type", th.StringType),
+                )),
+                th.Property("links", th.ObjectType(
+                    th.Property("related", th.StringType),
+                )),
+            )),
+            th.Property("component", th.ObjectType(
+                th.Property("data", th.ObjectType(
+                    th.Property("id", th.StringType),
+                    th.Property("type", th.StringType),
+                )),
+                th.Property("links", th.ObjectType(
+                    th.Property("related", th.StringType),
+                )),
+            )),
+        )),
+        th.Property("links", th.ObjectType(
+            th.Property("self", th.StringType),
+        )),
     ).to_dict()
 
-    def get_records(self, context: Optional[dict] = None) -> Iterable[dict]:
-        """Get records from the API."""
+    def get_records(self, context: dict | None) -> Iterator[dict]:
+        """Get records from the API.
+
+        Args:
+            context: Stream context.
+
+        Yields:
+            Records from the API.
+        """
         params = {}
-        if self.replication_key:
-            starting_date = self.get_starting_timestamp(context)
-            if starting_date:
-                params[f"filter[{self.replication_key}][GT]"] = starting_date
-
-        params["filter[accountId]"] = self._account_id
-
-        for record in self._sync_records(params):
-            yield record
+        if context and "start_date" in context:
+            params["filter[updatedAt][GT]"] = context["start_date"]
+        if context and "account_id" in context:
+            params["filter[accountId]"] = context["account_id"]
+        yield from self._tap.api.get_records(self.path, params)
 
 
-class PromotionsStream(TapOptiplyStream):
-    """Promotions stream."""
-
-    name = "promotions"
-    path = "/promotions"
-    primary_keys = ["id"]
-    replication_key = "updatedAt"
-    schema = th.PropertiesList(
-        th.Property("id", th.StringType, description="The promotion's unique identifier"),
-        th.Property("type", th.StringType, description="The resource type"),
-        th.Property("updatedAt", th.DateTimeType, description="When the promotion was last updated"),
-        th.Property(
-            "attributes",
-            th.ObjectType(
-                th.Property("uuid", th.StringType, description="The promotion's UUID"),
-                th.Property("endDate", th.DateTimeType, description="When the promotion ends"),
-                th.Property("upliftType", th.StringType, description="The type of uplift (e.g., absolute)"),
-                th.Property("productCount", th.IntegerType, description="Number of products in the promotion"),
-                th.Property("enabled", th.BooleanType, description="Whether the promotion is enabled"),
-                th.Property("accountId", th.IntegerType, description="The account ID"),
-                th.Property("createdAt", th.DateTimeType, description="When the promotion was created"),
-                th.Property("upliftIncrease", th.StringType, description="The uplift increase amount"),
-                th.Property("name", th.StringType, description="The promotion's name"),
-                th.Property("startDate", th.DateTimeType, description="When the promotion starts"),
-                th.Property("updatedAt", th.DateTimeType, description="When the promotion was last updated"),
-            ),
-        ),
-        th.Property(
-            "relationships",
-            th.ObjectType(
-                th.Property(
-                    "promotionProducts",
-                    th.ObjectType(
-                        th.Property(
-                            "links",
-                            th.ObjectType(
-                                th.Property("self", th.StringType),
-                                th.Property("related", th.StringType),
-                            ),
-                        ),
-                    ),
-                ),
-                th.Property(
-                    "account",
-                    th.ObjectType(
-                        th.Property(
-                            "links",
-                            th.ObjectType(
-                                th.Property("self", th.StringType),
-                                th.Property("related", th.StringType),
-                            ),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-        th.Property(
-            "links",
-            th.ObjectType(
-                th.Property("self", th.StringType),
-            ),
-        ),
-    ).to_dict()
-
-    def get_records(self, context: Optional[dict] = None) -> Iterable[dict]:
-        """Get records from the API."""
-        params = {}
-        if self.replication_key:
-            starting_date = self.get_starting_timestamp(context)
-            if starting_date:
-                params[f"filter[{self.replication_key}][GT]"] = starting_date
-
-        params["filter[promotions][accountId][EQ]"] = self._account_id
-
-        for record in self._sync_records(params):
-            yield record
-
-
-class PromotionProductsStream(TapOptiplyStream):
-    """Promotion products stream."""
-
-    name = "promotion_products"
-    path = "/promotionProducts"
-    primary_keys = ["id"]
-    replication_key = "updatedAt"
-    schema = th.PropertiesList(
-        th.Property("id", th.StringType, description="The promotion product's unique identifier"),
-        th.Property("type", th.StringType, description="The resource type"),
-        th.Property("updatedAt", th.DateTimeType, description="When the promotion product was last updated"),
-        th.Property(
-            "attributes",
-            th.ObjectType(
-                th.Property("specificUpliftType", th.StringType, description="The specific uplift type for this product"),
-                th.Property("createdAt", th.DateTimeType, description="When the promotion product was created"),
-                th.Property("uuid", th.StringType, description="The promotion product's UUID"),
-                th.Property("productId", th.IntegerType, description="The ID of the product"),
-                th.Property("specificUpliftIncrease", th.StringType, description="The specific uplift increase for this product"),
-                th.Property("promotionId", th.IntegerType, description="The ID of the promotion"),
-                th.Property("updatedAt", th.DateTimeType, description="When the promotion product was last updated"),
-            ),
-        ),
-        th.Property(
-            "relationships",
-            th.ObjectType(
-                th.Property(
-                    "product",
-                    th.ObjectType(
-                        th.Property(
-                            "links",
-                            th.ObjectType(
-                                th.Property("self", th.StringType),
-                                th.Property("related", th.StringType),
-                            ),
-                        ),
-                    ),
-                ),
-                th.Property(
-                    "promotion",
-                    th.ObjectType(
-                        th.Property(
-                            "links",
-                            th.ObjectType(
-                                th.Property("self", th.StringType),
-                                th.Property("related", th.StringType),
-                            ),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-        th.Property(
-            "links",
-            th.ObjectType(
-                th.Property("self", th.StringType),
-            ),
-        ),
-    ).to_dict()
-
-    def get_records(self, context: Optional[dict] = None) -> Iterable[dict]:
-        """Get records from the API."""
-        params = {}
-        if self.replication_key:
-            starting_date = self.get_starting_timestamp(context)
-            if starting_date:
-                params[f"filter[{self.replication_key}][GT]"] = starting_date
-
-        params["filter[promotionProducts][accountId][EQ]"] = self._account_id
-
-        for record in self._sync_records(params):
-            yield record
+STREAM_TYPES = {
+    "products": ProductsStream,
+    "suppliers": SuppliersStream,
+    "buy_orders": BuyOrdersStream,
+    "buy_order_lines": BuyOrderLinesStream,
+    "sell_orders": SellOrdersStream,
+    "sell_order_lines": SellOrderLinesStream,
+    "receipt_lines": ReceiptLinesStream,
+    "supplier_products": SupplierProductsStream,
+    "product_compositions": ProductCompositionsStream,
+}
