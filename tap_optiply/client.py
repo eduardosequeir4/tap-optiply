@@ -134,6 +134,15 @@ class OptiplyAPI:
         parts = stream_name.split('_')
         endpoint = parts[0] + ''.join(word.capitalize() for word in parts[1:])
         url = f"{self.base_url}/{endpoint}"
+        
+        # Set default page size if not provided
+        if "page[limit]" not in params:
+            params["page[limit]"] = 50
+            
+        # Initialize offset if not provided
+        if "page[offset]" not in params:
+            params["page[offset]"] = 0
+            
         while True:
             response = self._make_request("GET", url, params=params)
             data = response.json()
@@ -141,12 +150,19 @@ class OptiplyAPI:
             for record in data.get("data", []):
                 yield record
             
-            # Check for pagination
+            # Check for pagination using the links format from the API
             links = data.get("links", {})
             if "next" not in links:
                 break
-            url = links["next"]
-            params = {}  # Clear params as they're included in the next URL
+                
+            # Extract the next URL and parse it to get the new parameters
+            next_url = links["next"]
+            parsed_url = urllib.parse.urlparse(next_url)
+            query_params = urllib.parse.parse_qs(parsed_url.query)
+            
+            # Update params with the new values from the next URL
+            for key, value in query_params.items():
+                params[key] = value[0]  # Take the first value from the list
 
     def _update_token(self) -> None:
         """Update the access token."""

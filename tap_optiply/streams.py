@@ -61,8 +61,10 @@ class TapOptiplyStream(Stream):
         params = {}
         start_date = self.get_starting_time(context)
         if start_date:
+            # Use the correct filter format for date filtering
             params["filter[updatedAt][GT]"] = start_date.isoformat()
         if context and context.get("account_id"):
+            # Use the correct filter format for accountId
             params["filter[accountId]"] = context["account_id"]
 
         for record in self.api.get_records(self.name, params):
@@ -339,6 +341,8 @@ class BuyOrdersStream(TapOptiplyStream):
             th.Property("remoteIdMap", th.ObjectType(), description="Remote ID mapping"),
             th.Property("assembly", th.BooleanType, description="Whether this is an assembly order"),
             th.Property("updatedAt", th.DateTimeType, description="When the buy order was last updated"),
+            th.Property("expectedDeliveryDate", th.DateTimeType, description="Expected delivery date of the order"),
+            th.Property("supplierId", th.IntegerType, description="The ID of the supplier"),
         )),
         th.Property("relationships", th.ObjectType(
             th.Property("supplier", th.ObjectType(
@@ -478,26 +482,24 @@ class BuyOrderLinesStream(TapOptiplyStream):
     schema = th.PropertiesList(
         th.Property("id", th.StringType, description="The buy order line's unique identifier"),
         th.Property("type", th.StringType, description="The resource type"),
-        th.Property("updatedAt", th.DateTimeType, description="When the line was last updated"),
         th.Property("attributes", th.ObjectType(
-            th.Property("buyOrderId", th.IntegerType, description="The ID of the buy order"),
-            th.Property("productId", th.IntegerType, description="The ID of the product"),
-            th.Property("quantity", th.NumberType, description="The quantity ordered"),
-            th.Property("price", th.StringType, description="The price per unit"),
-            th.Property("totalValue", th.StringType, description="The total value of the line"),
             th.Property("createdAt", th.DateTimeType, description="When the line was created"),
+            th.Property("uuid", th.StringType, description="The buy order line's UUID"),
+            th.Property("quantity", th.NumberType, description="The quantity ordered"),
+            th.Property("productId", th.IntegerType, description="The ID of the product"),
+            th.Property("createdFromPublicApi", th.BooleanType, description="Whether created from public API"),
+            th.Property("subtotalValue", th.StringType, description="The subtotal value of the line"),
+            th.Property("buyOrderId", th.IntegerType, description="The ID of the buy order"),
             th.Property("updatedAt", th.DateTimeType, description="When the line was last updated"),
-            th.Property("remoteIdMap", th.ObjectType(), description="Remote ID mapping"),
-            th.Property("remoteDataSyncedToDate", th.DateTimeType, description="When remote data was last synced"),
         )),
         th.Property("relationships", th.ObjectType(
-            th.Property("buyOrder", th.ObjectType(
+            th.Property("product", th.ObjectType(
                 th.Property("links", th.ObjectType(
                     th.Property("self", th.StringType),
                     th.Property("related", th.StringType),
                 )),
             )),
-            th.Property("product", th.ObjectType(
+            th.Property("buyOrder", th.ObjectType(
                 th.Property("links", th.ObjectType(
                     th.Property("self", th.StringType),
                     th.Property("related", th.StringType),
@@ -522,8 +524,8 @@ class BuyOrderLinesStream(TapOptiplyStream):
             Buy order line records.
         """
         if context and "buyOrderId" in context:
-            # Use the parent's buyOrderId in the API request
-            params = {"filter[buyOrderLines][buyOrderId][EQ]": context["buyOrderId"]}
+            # Use the correct filter format for buyOrderId
+            params = {"filter[buyOrderId]": context["buyOrderId"]}
             for record in self.api.get_records(self.name, params):
                 yield record
         else:
@@ -540,26 +542,24 @@ class SellOrderLinesStream(TapOptiplyStream):
     schema = th.PropertiesList(
         th.Property("id", th.StringType, description="The sell order line's unique identifier"),
         th.Property("type", th.StringType, description="The resource type"),
-        th.Property("updatedAt", th.DateTimeType, description="When the line was last updated"),
         th.Property("attributes", th.ObjectType(
-            th.Property("sellOrderId", th.IntegerType, description="The ID of the sell order"),
-            th.Property("productId", th.IntegerType, description="The ID of the product"),
-            th.Property("quantity", th.NumberType, description="The quantity ordered"),
-            th.Property("price", th.StringType, description="The price per unit"),
-            th.Property("totalValue", th.StringType, description="The total value of the line"),
             th.Property("createdAt", th.DateTimeType, description="When the line was created"),
+            th.Property("uuid", th.StringType, description="The sell order line's UUID"),
+            th.Property("quantity", th.NumberType, description="The quantity ordered"),
+            th.Property("productId", th.IntegerType, description="The ID of the product"),
+            th.Property("createdFromPublicApi", th.BooleanType, description="Whether created from public API"),
+            th.Property("subtotalValue", th.StringType, description="The subtotal value of the line"),
+            th.Property("sellOrderId", th.IntegerType, description="The ID of the sell order"),
             th.Property("updatedAt", th.DateTimeType, description="When the line was last updated"),
-            th.Property("remoteIdMap", th.ObjectType(), description="Remote ID mapping"),
-            th.Property("remoteDataSyncedToDate", th.DateTimeType, description="When remote data was last synced"),
         )),
         th.Property("relationships", th.ObjectType(
-            th.Property("sellOrder", th.ObjectType(
+            th.Property("product", th.ObjectType(
                 th.Property("links", th.ObjectType(
                     th.Property("self", th.StringType),
                     th.Property("related", th.StringType),
                 )),
             )),
-            th.Property("product", th.ObjectType(
+            th.Property("sellOrder", th.ObjectType(
                 th.Property("links", th.ObjectType(
                     th.Property("self", th.StringType),
                     th.Property("related", th.StringType),
@@ -584,7 +584,7 @@ class SellOrderLinesStream(TapOptiplyStream):
             Sell order line records.
         """
         if context and "sellOrderId" in context:
-            # Use the parent's sellOrderId in the API request
+            # Use the correct filter format for sellOrderId
             params = {"filter[sellOrderId]": context["sellOrderId"]}
             for record in self.api.get_records(self.name, params):
                 yield record
