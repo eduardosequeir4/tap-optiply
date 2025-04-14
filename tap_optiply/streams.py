@@ -67,7 +67,9 @@ class TapOptiplyStream(Stream):
             # Use the correct filter format for accountId
             params["filter[accountId]"] = context["account_id"]
 
-        for record in self.api.get_records(self.name, params):
+        # Use path attribute if it exists, otherwise use name
+        path = getattr(self, "path", self.name)
+        for record in self.api.get_records(path, params):
             # Copy updatedAt from attributes to root level
             if "attributes" in record and "updatedAt" in record["attributes"]:
                 record["updatedAt"] = record["attributes"]["updatedAt"]
@@ -321,7 +323,7 @@ class ProductCompositionsStream(TapOptiplyStream):
 
     name = "product_compositions"
     path = "/productCompositions"
-    primary_keys = ["id"]
+    primary_keys: t.ClassVar[list[str]] = ["id"]
     replication_key = "updatedAt"
     schema = th.PropertiesList(
         th.Property("id", th.StringType, description="The product composition's unique identifier"),
@@ -375,7 +377,7 @@ class PromotionsStream(TapOptiplyStream):
 
     name = "promotions"
     path = "/promotions"
-    primary_keys = ["id"]
+    primary_keys: t.ClassVar[list[str]] = ["id"]
     replication_key = "updatedAt"
     schema = th.PropertiesList(
         th.Property("id", th.StringType, description="The promotion's unique identifier"),
@@ -433,7 +435,7 @@ class PromotionProductStream(TapOptiplyStream):
 
     name = "promotion_products"
     path = "/promotionProducts"
-    primary_keys = ["id"]
+    primary_keys: t.ClassVar[list[str]] = ["id"]
     replication_key = "updatedAt"
     schema = th.PropertiesList(
         th.Property("id", th.StringType, description="The promotion product's unique identifier"),
@@ -762,7 +764,6 @@ class ReceiptLinesStream(TapOptiplyStream):
     name = "receipt_lines"
     primary_keys: t.ClassVar[list[str]] = ["id"]
     replication_key = "updatedAt"
-
     schema = th.PropertiesList(
         th.Property("id", th.StringType, description="The receipt line's unique identifier"),
         th.Property("type", th.StringType, description="The resource type"),
