@@ -355,6 +355,20 @@ class ProductCompositionsStream(TapOptiplyStream):
         )),
     ).to_dict()
 
+    def get_records(
+        self,
+        context: t.Optional[dict] = None,
+    ) -> t.Iterable[dict]:
+        """Return a generator of product composition records.
+
+        Args:
+            context: Stream partition or context dictionary.
+
+        Yields:
+            Product composition records.
+        """
+        yield from super().get_records(context)
+
 
 class PromotionsStream(TapOptiplyStream):
     """Promotions stream."""
@@ -399,6 +413,20 @@ class PromotionsStream(TapOptiplyStream):
         )),
     ).to_dict()
 
+    def get_records(
+        self,
+        context: t.Optional[dict] = None,
+    ) -> t.Iterable[dict]:
+        """Return a generator of promotion records.
+
+        Args:
+            context: Stream partition or context dictionary.
+
+        Yields:
+            Promotion records.
+        """
+        yield from super().get_records(context)
+
 
 class PromotionProductStream(TapOptiplyStream):
     """Promotion product stream."""
@@ -438,6 +466,20 @@ class PromotionProductStream(TapOptiplyStream):
             th.Property("self", th.StringType),
         )),
     ).to_dict()
+
+    def get_records(
+        self,
+        context: t.Optional[dict] = None,
+    ) -> t.Iterable[dict]:
+        """Return a generator of promotion product records.
+
+        Args:
+            context: Stream partition or context dictionary.
+
+        Yields:
+            Promotion product records.
+        """
+        yield from super().get_records(context)
 
 
 class BuyOrdersStream(TapOptiplyStream):
