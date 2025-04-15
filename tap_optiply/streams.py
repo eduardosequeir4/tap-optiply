@@ -119,7 +119,7 @@ class OrdersStream(OptiplyStream):
     ) -> t.Dict[str, t.Any]:
         """Get URL parameters for the request."""
         params = super().get_url_params(context)
-        params["limit"] = 100
+        params["page[limit]"] = 100
         return params
 
 
@@ -157,7 +157,7 @@ class ProductsStream(OptiplyStream):
     ) -> t.Dict[str, t.Any]:
         """Get URL parameters for the request."""
         params = super().get_url_params(context)
-        params["limit"] = 100
+        params["page[limit]"] = 100
         return params
 
     def get_records(
@@ -552,7 +552,7 @@ class SellOrderLinesStream(TapOptiplyStream):
     ) -> t.Dict[str, t.Any]:
         """Get URL parameters for the request."""
         params = super().get_url_params(context)
-        params["limit"] = 100
+        params["page[limit]"] = 25
         return params
 
 
