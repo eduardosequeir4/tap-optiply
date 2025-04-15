@@ -14,6 +14,7 @@ import base64
 from typing import Any, Dict, Optional
 from singer_sdk.streams import Stream as RESTStreamBase
 from tap_optiply.auth import OptiplyAuthenticator
+import json
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)  # Set root logger to DEBUG
@@ -239,6 +240,16 @@ class OptiplyAPI:
             if 'expires_in' in token_data:
                 self.token_expires_at = time.time() + token_data['expires_in']
             
+            # Store token in config
+            self.config['access_token'] = self._access_token
+            self.config['token_expires_at'] = self.token_expires_at
+            
+            # Save config to file
+            config_path = self.config.get('config_path', 'config.json')
+            with open(config_path, 'w') as f:
+                json.dump(self.config, f, indent=2)
+            logger.info("Config saved with valid token")
+            
             # Update session headers with the new token
             self._session.headers.update({"Authorization": f"Bearer {self._access_token}"})
             
@@ -384,6 +395,10 @@ class OptiplyAPI:
         path = parts[0] + ''.join(word.capitalize() for word in parts[1:])
         url = f"https://api.optiply.com/v1/{path}"
 
+        # Ensure accountId is in params if available
+        if self._account_id and params is not None:
+            params['filter[accountId]'] = self._account_id
+
         while True:
             response = self._make_request("GET", url, params=params)
             data = response.json()
@@ -394,6 +409,11 @@ class OptiplyAPI:
             # Check for pagination links
             if "links" in data and "next" in data["links"]:
                 url = data["links"]["next"]
-                params = None  # Clear params as they're included in the next URL
+                # Parse the next URL to preserve accountId
+                parsed_url = urllib.parse.urlparse(data["links"]["next"])
+                query_params = dict(urllib.parse.parse_qsl(parsed_url.query))
+                if self._account_id:
+                    query_params['filter[accountId]'] = self._account_id
+                params = query_params
             else:
                 break
