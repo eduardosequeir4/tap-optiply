@@ -63,13 +63,13 @@ class TapOptiplyStream(Stream):
         start_date = self.get_starting_time(context)
         if start_date:
             # Use the correct filter format for date filtering
-            params["filter[updatedAt][GT]"] = start_date.isoformat()
+            params[f"filter[{self.replication_key}][GT]"] = start_date.isoformat()
         if context and context.get("account_id"):
             # Use the correct filter format for accountId
             params["filter[accountId]"] = context["account_id"]
 
         for record in self.api.get_records(self.name, params):
-            # Copy updatedAt from attributes to root level
+            # Copy updatedAt from attributes to root level if it exists
             if "attributes" in record and "updatedAt" in record["attributes"]:
                 record["updatedAt"] = record["attributes"]["updatedAt"]
             yield record
@@ -251,7 +251,8 @@ class SupplierProductsStream(TapOptiplyStream):
     """Define supplier products stream."""
 
     name = "supplier_products"
-    primary_keys: t.ClassVar[list[str]] = ["id"]
+    path = "supplierProducts"
+    primary_keys = ["id"]
     replication_key = "updatedAt"
 
     schema = th.PropertiesList(
@@ -314,16 +315,6 @@ class SupplierProductsStream(TapOptiplyStream):
         Yields:
             Supplier product records.
         """
-        params = {}
-        if self.replication_key:
-            starting_date = self.get_starting_timestamp(context)
-            if starting_date:
-                params[f"filter[{self.replication_key}][GT]"] = starting_date
-
-        params["filter[supplierProducts][accountId][EQ]"] = self._account_id
-
-        for record in self._sync_records(params):
-            yield record
         yield from super().get_records(context)
 
 
@@ -377,18 +368,6 @@ class BuyOrdersStream(TapOptiplyStream):
             th.Property("self", th.StringType),
         )),
     ).to_dict()
-
-    def get_child_context(self, record: dict, context: t.Optional[dict] = None) -> dict:
-        """Return a context dictionary for child streams.
-
-        Args:
-            record: The record from the parent stream.
-            context: The parent stream's context.
-
-        Returns:
-            A context dictionary for child streams.
-        """
-        return {"buyOrderId": record["id"]}
 
     def get_records(
         self,
@@ -454,18 +433,6 @@ class SellOrdersStream(TapOptiplyStream):
         )),
     ).to_dict()
 
-    def get_child_context(self, record: dict, context: t.Optional[dict] = None) -> dict:
-        """Return a context dictionary for child streams.
-
-        Args:
-            record: The record from the parent stream.
-            context: The parent stream's context.
-
-        Returns:
-            A context dictionary for child streams.
-        """
-        return {"sellOrderId": record["id"]}
-
     def get_records(
         self,
         context: t.Optional[dict] = None,
@@ -485,12 +452,14 @@ class BuyOrderLinesStream(TapOptiplyStream):
     """Define buy order lines stream."""
 
     name = "buy_order_lines"
-    primary_keys: t.ClassVar[list[str]] = ["id"]
-    parent_stream_type = BuyOrdersStream
+    path = "buyOrderLines"
+    primary_keys = ["id"]
+    replication_key = "updatedAt"
 
     schema = th.PropertiesList(
         th.Property("id", th.StringType, description="The buy order line's unique identifier"),
         th.Property("type", th.StringType, description="The resource type"),
+        th.Property("updatedAt", th.DateTimeType, description="When the buy order line was last updated"),
         th.Property("attributes", th.ObjectType(
             th.Property("createdAt", th.DateTimeType, description="When the line was created"),
             th.Property("uuid", th.StringType, description="The buy order line's UUID"),
@@ -508,6 +477,12 @@ class BuyOrderLinesStream(TapOptiplyStream):
                     th.Property("related", th.StringType),
                 )),
             )),
+            th.Property("receiptLines", th.ObjectType(
+                th.Property("links", th.ObjectType(
+                    th.Property("self", th.StringType),
+                    th.Property("related", th.StringType),
+                )),
+            )),
             th.Property("buyOrder", th.ObjectType(
                 th.Property("links", th.ObjectType(
                     th.Property("self", th.StringType),
@@ -520,37 +495,26 @@ class BuyOrderLinesStream(TapOptiplyStream):
         )),
     ).to_dict()
 
-    def get_records(
-        self,
-        context: t.Optional[dict] = None,
-    ) -> t.Iterable[dict]:
-        """Return a generator of buy order line records.
-
-        Args:
-            context: Stream partition or context dictionary.
-
-        Yields:
-            Buy order line records.
-        """
+    def get_records(self, context: t.Optional[dict] = None) -> t.Iterable[dict]:
+        """Yield buy order line records."""
+        params = {}
         if context and "buyOrderId" in context:
-            # Use the correct filter format for buyOrderId
-            params = {"filter[buyOrderId]": context["buyOrderId"]}
-            for record in self.api.get_records(self.name, params):
-                yield record
-        else:
-            yield from super().get_records(context)
+            params["filter[buyOrderId]"] = context["buyOrderId"]
+        yield from super().get_records(context)
 
 
 class SellOrderLinesStream(TapOptiplyStream):
     """Define sell order lines stream."""
 
     name = "sell_order_lines"
-    primary_keys: t.ClassVar[list[str]] = ["id"]
-    parent_stream_type = SellOrdersStream
+    path = "sellOrderLines"
+    primary_keys = ["id"]
+    replication_key = "updatedAt"
 
     schema = th.PropertiesList(
         th.Property("id", th.StringType, description="The sell order line's unique identifier"),
         th.Property("type", th.StringType, description="The resource type"),
+        th.Property("updatedAt", th.DateTimeType, description="When the sell order line was last updated"),
         th.Property("attributes", th.ObjectType(
             th.Property("createdAt", th.DateTimeType, description="When the line was created"),
             th.Property("uuid", th.StringType, description="The sell order line's UUID"),
@@ -568,37 +532,18 @@ class SellOrderLinesStream(TapOptiplyStream):
                     th.Property("related", th.StringType),
                 )),
             )),
-            th.Property("sellOrder", th.ObjectType(
-                th.Property("links", th.ObjectType(
-                    th.Property("self", th.StringType),
-                    th.Property("related", th.StringType),
-                )),
-            )),
         )),
         th.Property("links", th.ObjectType(
             th.Property("self", th.StringType),
         )),
     ).to_dict()
 
-    def get_records(
-        self,
-        context: t.Optional[dict] = None,
-    ) -> t.Iterable[dict]:
-        """Return a generator of sell order line records.
-
-        Args:
-            context: Stream partition or context dictionary.
-
-        Yields:
-            Sell order line records.
-        """
+    def get_records(self, context: t.Optional[dict] = None) -> t.Iterable[dict]:
+        """Yield sell order line records."""
+        params = {}
         if context and "sellOrderId" in context:
-            # Use the correct filter format for sellOrderId
-            params = {"filter[sellOrderId]": context["sellOrderId"]}
-            for record in self.api.get_records(self.name, params):
-                yield record
-        else:
-            yield from super().get_records(context)
+            params["filter[sellOrderId]"] = context["sellOrderId"]
+        yield from super().get_records(context)
 
 
 class ReceiptLinesStream(TapOptiplyStream):
@@ -650,107 +595,119 @@ class ReceiptLinesStream(TapOptiplyStream):
 
 
 class ProductCompositionsStream(TapOptiplyStream):
-    """ProductCompositions stream."""
+    """Stream for product compositions."""
 
     name = "product_compositions"
-    path = "/productCompositions"
-    primary_keys = ["id"]
+    path = "productCompositions"
+    primary_keys: t.ClassVar[list[str]] = ["id"]
     replication_key = "updatedAt"
     schema = th.PropertiesList(
         th.Property("id", th.StringType),
         th.Property("type", th.StringType),
         th.Property("updatedAt", th.DateTimeType),
-        th.Property("attributes", th.ObjectType(
-            th.Property("productId", th.StringType),
-            th.Property("componentId", th.StringType),
-            th.Property("quantity", th.NumberType),
-            th.Property("unit", th.StringType),
-            th.Property("createdAt", th.DateTimeType),
-            th.Property("updatedAt", th.DateTimeType),
-        )),
-        th.Property("relationships", th.ObjectType(
-            th.Property("product", th.ObjectType(
-                th.Property("data", th.ObjectType(
-                    th.Property("id", th.StringType),
-                    th.Property("type", th.StringType),
-                )),
-                th.Property("links", th.ObjectType(
-                    th.Property("related", th.StringType),
-                )),
-            )),
-            th.Property("component", th.ObjectType(
-                th.Property("data", th.ObjectType(
-                    th.Property("id", th.StringType),
-                    th.Property("type", th.StringType),
-                )),
-                th.Property("links", th.ObjectType(
-                    th.Property("related", th.StringType),
-                )),
-            )),
-        )),
-        th.Property("links", th.ObjectType(
-            th.Property("self", th.StringType),
-        )),
+        th.Property(
+            "attributes",
+            th.ObjectType(
+                th.Property("createdAt", th.DateTimeType),
+                th.Property("updatedAt", th.DateTimeType),
+                th.Property("compositionId", th.StringType),
+                th.Property("quantity", th.NumberType),
+            ),
+        ),
+        th.Property(
+            "relationships",
+            th.ObjectType(
+                th.Property(
+                    "composition",
+                    th.ObjectType(
+                        th.Property(
+                            "data",
+                            th.ObjectType(
+                                th.Property("id", th.StringType),
+                                th.Property("type", th.StringType),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
     ).to_dict()
 
-    def get_records(self, context: dict | None) -> Iterator[dict]:
-        """Get records from the API.
+    def get_records(
+        self,
+        context: t.Optional[dict] = None,
+    ) -> t.Iterable[dict]:
+        """Return a generator of product composition records.
 
         Args:
-            context: Stream context.
+            context: Stream partition or context dictionary.
 
         Yields:
-            Records from the API.
+            Product composition records.
         """
-        params = {}
-        if context and "start_date" in context:
-            params["filter[updatedAt][GT]"] = context["start_date"]
-        if context and "account_id" in context:
-            params["filter[accountId]"] = context["account_id"]
-        yield from self._tap.api.get_records(self.path, params)
+        yield from super().get_records(context)
 
 
 class PromotionsStream(TapOptiplyStream):
     """Promotions stream."""
 
     name = "promotions"
-    path = "/promotions"
-    primary_keys = ["id"]
+    path = "promotions"
+    primary_keys: t.ClassVar[list[str]] = ["id"]
     replication_key = "updatedAt"
+
     schema = th.PropertiesList(
-        th.Property("id", th.StringType, description="The promotion's unique identifier"),
-        th.Property("type", th.StringType, description="The resource type"),
-        th.Property("updatedAt", th.DateTimeType, description="When the promotion was last updated"),
-        th.Property("attributes", th.ObjectType(
-            th.Property("uuid", th.StringType, description="The promotion's UUID"),
-            th.Property("endDate", th.DateTimeType, description="When the promotion ends"),
-            th.Property("upliftType", th.StringType, description="The type of uplift (absolute or percentage)"),
-            th.Property("productCount", th.IntegerType, description="Number of products in the promotion"),
-            th.Property("enabled", th.BooleanType, description="Whether the promotion is enabled"),
-            th.Property("accountId", th.IntegerType, description="The account ID"),
-            th.Property("createdAt", th.DateTimeType, description="When the promotion was created"),
-            th.Property("upliftIncrease", th.StringType, description="The uplift increase value"),
-            th.Property("name", th.StringType, description="The promotion's name"),
-            th.Property("startDate", th.DateTimeType, description="When the promotion starts"),
-            th.Property("updatedAt", th.DateTimeType, description="When the promotion was last updated"),
-        )),
-        th.Property("relationships", th.ObjectType(
-            th.Property("promotionProducts", th.ObjectType(
-                th.Property("links", th.ObjectType(
-                    th.Property("self", th.StringType),
-                    th.Property("related", th.StringType),
-                )),
-            )),
-            th.Property("account", th.ObjectType(
-                th.Property("links", th.ObjectType(
-                    th.Property("self", th.StringType),
-                    th.Property("related", th.StringType),
-                )),
-            )),
-        )),
-        th.Property("links", th.ObjectType(
-            th.Property("self", th.StringType),
-        )),
+        th.Property("id", th.StringType),
+        th.Property("type", th.StringType),
+        th.Property("updatedAt", th.DateTimeType),
+        th.Property(
+            "attributes",
+            th.ObjectType(
+                th.Property("createdAt", th.DateTimeType),
+                th.Property("updatedAt", th.DateTimeType),
+                th.Property("name", th.StringType),
+                th.Property("description", th.StringType),
+                th.Property("startDate", th.DateTimeType),
+                th.Property("endDate", th.DateTimeType),
+                th.Property("status", th.StringType),
+                th.Property("accountId", th.IntegerType),
+            ),
+        ),
+        th.Property(
+            "relationships",
+            th.ObjectType(
+                th.Property(
+                    "promotionProducts",
+                    th.ObjectType(
+                        th.Property(
+                            "links",
+                            th.ObjectType(
+                                th.Property("self", th.StringType),
+                                th.Property("related", th.StringType),
+                            ),
+                        ),
+                    ),
+                ),
+                th.Property(
+                    "account",
+                    th.ObjectType(
+                        th.Property(
+                            "links",
+                            th.ObjectType(
+                                th.Property("self", th.StringType),
+                                th.Property("related", th.StringType),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        th.Property(
+            "links",
+            th.ObjectType(
+                th.Property("self", th.StringType),
+            ),
+        ),
     ).to_dict()
 
     def get_records(self, context: dict | None) -> Iterator[dict]:
@@ -762,51 +719,67 @@ class PromotionsStream(TapOptiplyStream):
         Yields:
             Records from the API.
         """
-        params = {}
-        if context and "start_date" in context:
-            params["filter[updatedAt][GT]"] = context["start_date"]
-        if context and "account_id" in context:
-            params["filter[promotions][accountId][EQ]"] = context["account_id"]
-        yield from self._tap.api.get_records(self.path, params)
+        yield from super().get_records(context)
 
 
 class PromotionProductsStream(TapOptiplyStream):
     """PromotionProducts stream."""
 
     name = "promotion_products"
-    path = "/promotionProducts"
-    primary_keys = ["id"]
+    path = "promotionProducts"
+    primary_keys: t.ClassVar[list[str]] = ["id"]
     replication_key = "updatedAt"
+
     schema = th.PropertiesList(
-        th.Property("id", th.StringType, description="The promotion product's unique identifier"),
-        th.Property("type", th.StringType, description="The resource type"),
-        th.Property("updatedAt", th.DateTimeType, description="When the promotion product was last updated"),
-        th.Property("attributes", th.ObjectType(
-            th.Property("specificUpliftType", th.StringType, description="Specific uplift type for this product"),
-            th.Property("createdAt", th.DateTimeType, description="When the promotion product was created"),
-            th.Property("uuid", th.StringType, description="The promotion product's UUID"),
-            th.Property("productId", th.IntegerType, description="The ID of the product"),
-            th.Property("specificUpliftIncrease", th.StringType, description="Specific uplift increase for this product"),
-            th.Property("promotionId", th.IntegerType, description="The ID of the promotion"),
-            th.Property("updatedAt", th.DateTimeType, description="When the promotion product was last updated"),
-        )),
-        th.Property("relationships", th.ObjectType(
-            th.Property("product", th.ObjectType(
-                th.Property("links", th.ObjectType(
-                    th.Property("self", th.StringType),
-                    th.Property("related", th.StringType),
-                )),
-            )),
-            th.Property("promotion", th.ObjectType(
-                th.Property("links", th.ObjectType(
-                    th.Property("self", th.StringType),
-                    th.Property("related", th.StringType),
-                )),
-            )),
-        )),
-        th.Property("links", th.ObjectType(
-            th.Property("self", th.StringType),
-        )),
+        th.Property("id", th.StringType),
+        th.Property("type", th.StringType),
+        th.Property("updatedAt", th.DateTimeType),
+        th.Property(
+            "attributes",
+            th.ObjectType(
+                th.Property("createdAt", th.DateTimeType),
+                th.Property("updatedAt", th.DateTimeType),
+                th.Property("promotionId", th.IntegerType),
+                th.Property("productId", th.IntegerType),
+                th.Property("discountPercentage", th.NumberType),
+                th.Property("discountAmount", th.NumberType),
+            ),
+        ),
+        th.Property(
+            "relationships",
+            th.ObjectType(
+                th.Property(
+                    "promotion",
+                    th.ObjectType(
+                        th.Property(
+                            "data",
+                            th.ObjectType(
+                                th.Property("id", th.StringType),
+                                th.Property("type", th.StringType),
+                            ),
+                        ),
+                    ),
+                ),
+                th.Property(
+                    "product",
+                    th.ObjectType(
+                        th.Property(
+                            "data",
+                            th.ObjectType(
+                                th.Property("id", th.StringType),
+                                th.Property("type", th.StringType),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        th.Property(
+            "links",
+            th.ObjectType(
+                th.Property("self", th.StringType),
+            ),
+        ),
     ).to_dict()
 
     def get_records(self, context: dict | None) -> Iterator[dict]:
@@ -819,11 +792,9 @@ class PromotionProductsStream(TapOptiplyStream):
             Records from the API.
         """
         params = {}
-        if context and "start_date" in context:
-            params["filter[updatedAt][GT]"] = context["start_date"]
         if context and "promotion_id" in context:
             params["filter[promotionId]"] = context["promotion_id"]
-        yield from self._tap.api.get_records(self.path, params)
+        yield from super().get_records(context)
 
 
 STREAM_TYPES = {
