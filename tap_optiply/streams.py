@@ -79,6 +79,7 @@ class ProductsStream(TapOptiplyStream):
     """Define products stream."""
 
     name = "products"
+    path = "products"
     primary_keys: t.ClassVar[list[str]] = ["id"]
     replication_key = "updatedAt"
 
@@ -182,6 +183,7 @@ class SuppliersStream(TapOptiplyStream):
     """Define suppliers stream."""
 
     name = "suppliers"
+    path = "suppliers"
     primary_keys: t.ClassVar[list[str]] = ["id"]
     replication_key = "updatedAt"
 
@@ -252,7 +254,7 @@ class SupplierProductsStream(TapOptiplyStream):
 
     name = "supplier_products"
     path = "supplierProducts"
-    primary_keys = ["id"]
+    primary_keys: t.ClassVar[list[str]] = ["id"]
     replication_key = "updatedAt"
 
     schema = th.PropertiesList(
@@ -322,6 +324,7 @@ class BuyOrdersStream(TapOptiplyStream):
     """Define buy orders stream."""
 
     name = "buy_orders"
+    path = "buyOrders"
     primary_keys: t.ClassVar[list[str]] = ["id"]
     replication_key = "updatedAt"
 
@@ -388,6 +391,7 @@ class SellOrdersStream(TapOptiplyStream):
     """Define sell orders stream."""
 
     name = "sell_orders"
+    path = "sellOrders"
     primary_keys: t.ClassVar[list[str]] = ["id"]
     replication_key = "updatedAt"
 
@@ -453,7 +457,7 @@ class BuyOrderLinesStream(TapOptiplyStream):
 
     name = "buy_order_lines"
     path = "buyOrderLines"
-    primary_keys = ["id"]
+    primary_keys: t.ClassVar[list[str]] = ["id"]
     replication_key = "updatedAt"
 
     schema = th.PropertiesList(
@@ -508,7 +512,7 @@ class SellOrderLinesStream(TapOptiplyStream):
 
     name = "sell_order_lines"
     path = "sellOrderLines"
-    primary_keys = ["id"]
+    primary_keys: t.ClassVar[list[str]] = ["id"]
     replication_key = "updatedAt"
 
     schema = th.PropertiesList(
@@ -550,6 +554,7 @@ class ReceiptLinesStream(TapOptiplyStream):
     """Define receipt lines stream."""
 
     name = "receipt_lines"
+    path = "receiptLines"
     primary_keys: t.ClassVar[list[str]] = ["id"]
     replication_key = "updatedAt"
 

@@ -130,10 +130,21 @@ class OptiplyAPI:
         Yields:
             Records from the API.
         """
-        # Convert snake_case to camelCase for API endpoint
-        parts = stream_name.split('_')
-        endpoint = parts[0] + ''.join(word.capitalize() for word in parts[1:])
+        # Get the stream class from STREAM_TYPES
+        from tap_optiply.streams import STREAM_TYPES
+        stream_class = STREAM_TYPES.get(stream_name)
+        
+        # Use the stream's path if available, otherwise convert snake_case to camelCase
+        if stream_class and hasattr(stream_class, 'path'):
+            endpoint = stream_class.path
+            logger.info(f"Using stream path for {stream_name}: {endpoint}")
+        else:
+            parts = stream_name.split('_')
+            endpoint = parts[0] + ''.join(word.capitalize() for word in parts[1:])
+            logger.info(f"Using converted path for {stream_name}: {endpoint}")
+        
         url = f"{self.base_url}/{endpoint}"
+        logger.info(f"Making request to: {url}")
         
         # Set default page size if not provided
         if "page[limit]" not in params:
