@@ -18,18 +18,21 @@ class OptiplyAuthenticator:
     def __init__(
         self,
         config: dict,
+        tap: Optional[Any] = None,
         auth_endpoint: str = "https://dashboard.optiply.nl/api/auth/oauth/token",
     ) -> None:
         """Initialize the authenticator.
 
         Args:
             config: Configuration dictionary.
+            tap: Optional tap instance.
             auth_endpoint: The authentication endpoint URL.
         """
         self.config = dict(config)  # Make a copy of the config
         self._auth_endpoint = auth_endpoint
         self._access_token = None
         self._token_expires_at = None
+        self._tap = tap
         self._load_token_from_config()
 
     def _load_token_from_config(self) -> bool:
@@ -44,6 +47,11 @@ class OptiplyAuthenticator:
         """Save token to config."""
         self.config['access_token'] = self._access_token
         self.config['token_expires_at'] = self._token_expires_at
+        
+        # Save to config file if tap instance is available
+        if hasattr(self, '_tap') and self._tap and hasattr(self._tap, 'config_file'):
+            with open(self._tap.config_file, "w") as outfile:
+                json.dump(self.config, outfile, indent=4)
 
     def _is_token_valid(self) -> bool:
         """Check if the current token is valid."""

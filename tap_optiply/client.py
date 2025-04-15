@@ -92,8 +92,8 @@ class OptiplyStream(RESTStreamBase):
             **kwargs: Additional keyword arguments to pass to the parent class.
         """
         super().__init__(tap=tap, **kwargs)
-        self.api = api
-        self.authenticator = OptiplyAuthenticator(tap.config)
+        self.api = api or OptiplyAPI(tap.config, tap=tap)
+        self.authenticator = OptiplyAuthenticator(tap.config, tap=tap)
 
     def _prepare_record(self, record: dict) -> dict:
         """Prepare a record for output by copying updatedAt from attributes if needed.
@@ -176,7 +176,7 @@ class OptiplyAPI:
         this.config = config
         this._tap = tap
         this.session = requests.Session()
-        this.authenticator = OptiplyAuthenticator(config)
+        this.authenticator = OptiplyAuthenticator(config, tap=tap)
         this.session.headers.update({
             "Accept": "application/vnd.api+json",
             "Content-Type": "application/vnd.api+json",
