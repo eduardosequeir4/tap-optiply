@@ -107,6 +107,25 @@ class OptiplyStream(RESTStreamBase):
             record["updatedAt"] = record["attributes"]["updatedAt"]
         return record
 
+    def get_url_params(
+        self, context: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Get URL parameters for the request."""
+        params = super().get_url_params(context)
+        
+        # Add account_id filter from config
+        if self._tap.config.get("account_id"):
+            params["filter[accountId]"] = self._tap.config["account_id"]
+            
+        # Add replication key if available
+        if self.replication_key:
+            params[f"filter[{self.replication_key}][GT]"] = self.get_starting_timestamp(context)
+            
+        # Set page limit
+        params["page[limit]"] = 100
+            
+        return params
+
     def _make_request(
         self,
         method: str,
@@ -141,22 +160,6 @@ class OptiplyStream(RESTStreamBase):
 
         return response.json()
 
-    def get_url_params(
-        self, context: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
-        """Get URL parameters for the request."""
-        params = super().get_url_params(context)
-        
-        # Add account_id filter if available
-        if self.api and hasattr(self.api, 'account_id') and self.api.account_id:
-            params["filter[accountId]"] = self.api.account_id
-            
-        # Add replication key if available
-        if self.replication_key:
-            params["filter[updatedAt][GT]"] = self.get_starting_timestamp(context)
-            
-        return params
-
 class OptiplyAPI:
     """Optiply API client."""
 
@@ -168,7 +171,7 @@ class OptiplyAPI:
         """
         self.config = config
         self._access_token = None
-        self._account_id = None
+        self._account_id = config.get("account_id")  # Set account_id from config
         self._session = requests.Session()
         self._session.headers.update({
             "Accept": "application/vnd.api+json",
@@ -180,7 +183,6 @@ class OptiplyAPI:
         self.password = config.get("password")
         self.client_id = config.get("client_id")
         self.client_secret = config.get("client_secret")
-        self.account_id = config.get("account_id")
         
         # Create Basic Auth header for token requests - using the exact format from the example
         credentials = f"{self.client_id}:{self.client_secret}"
@@ -257,7 +259,8 @@ class OptiplyAPI:
         if self._account_id:
             return self._account_id
 
-        url = "https://api.optiply.com/v1/accounts"
+        # If no account_id in config, fetch it from the API
+        url = f"{self.base_url}/accounts"
         response = self._session.get(url)
         response.raise_for_status()
         self._account_id = response.json()["data"][0]["id"]
