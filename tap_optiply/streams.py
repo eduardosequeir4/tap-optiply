@@ -10,7 +10,7 @@ from typing import Iterator
 from singer_sdk import typing as th  # JSON Schema typing helpers
 from singer_sdk.streams import Stream
 
-from tap_optiply.client import OptiplyAPI
+from tap_optiply.client import OptiplyAPI, OptiplyStream
 
 SCHEMAS_DIR = resources.files(__package__) / "schemas"
 
@@ -94,94 +94,70 @@ class TapOptiplyStream(Stream):
             yield self._prepare_record(record)
 
 
-class ProductsStream(TapOptiplyStream):
-    """Define products stream."""
+class OrdersStream(OptiplyStream):
+    """Orders stream."""
+
+    name = "orders"
+    path = "/orders"
+    primary_keys = ["id"]
+    replication_key = "updatedAt"
+    schema = {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string"},
+            "orderNumber": {"type": "string"},
+            "status": {"type": "string"},
+            "createdAt": {"type": "string", "format": "date-time"},
+            "updatedAt": {"type": "string", "format": "date-time"},
+        },
+        "required": ["id", "orderNumber", "status", "createdAt", "updatedAt"],
+    }
+
+    def get_url_params(
+        self, context: t.Optional[t.Dict[str, t.Any]] = None
+    ) -> t.Dict[str, t.Any]:
+        """Get URL parameters for the request."""
+        params = super().get_url_params(context)
+        params["limit"] = 100
+        return params
+
+
+class ProductsStream(OptiplyStream):
+    """Products stream."""
 
     name = "products"
-    path = "products"
-    primary_keys: t.ClassVar[list[str]] = ["id"]
+    path = "/products"
+    primary_keys = ["id"]
     replication_key = "updatedAt"
+    schema = {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string"},
+            "sku": {"type": "string"},
+            "name": {"type": "string"},
+            "createdAt": {"type": "string", "format": "date-time"},
+            "updatedAt": {"type": "string", "format": "date-time"},
+        },
+        "required": ["id", "sku", "name", "createdAt", "updatedAt"],
+    }
 
-    schema = th.PropertiesList(
-        th.Property("id", th.StringType, description="The product's unique identifier"),
-        th.Property("type", th.StringType, description="The resource type"),
-        th.Property("updatedAt", th.DateTimeType, description="When the product was last updated"),
-        th.Property("attributes", th.ObjectType(
-            th.Property("notBeingBought", th.BooleanType, description="Whether the product is not being bought"),
-            th.Property("createdAtRemote", th.DateTimeType, description="When the product was created remotely"),
-            th.Property("uuid", th.StringType, description="The product's UUID"),
-            th.Property("createdAt", th.DateTimeType, description="When the product was created"),
-            th.Property("eanCode", th.StringType, description="The product's EAN code"),
-            th.Property("price", th.StringType, description="The product's price"),
-            th.Property("stockMeasurementUnit", th.StringType, description="The unit of stock measurement"),
-            th.Property("minimumStock", th.IntegerType, description="Minimum stock level"),
-            th.Property("assembled", th.BooleanType, description="Whether the product is assembled"),
-            th.Property("manualServiceLevel", th.StringType, description="Manual service level"),
-            th.Property("updatedAt", th.DateTimeType, description="When the product was last updated"),
-            th.Property("resumingPurchase", th.DateTimeType, description="When to resume purchasing"),
-            th.Property("ignored", th.BooleanType, description="Whether the product is ignored"),
-            th.Property("createdFromPublicApi", th.BooleanType, description="Whether created from public API"),
-            th.Property("remoteIdMap", th.ObjectType(), description="Remote ID mapping"),
-            th.Property("stockLevel", th.NumberType, description="Current stock level"),
-            th.Property("accountId", th.IntegerType, description="The account ID"),
-            th.Property("remoteDataSyncedToDate", th.DateTimeType, description="When remote data was last synced"),
-            th.Property("name", th.StringType, description="The product's name"),
-            th.Property("category", th.StringType, description="The product's category"),
-            th.Property("maximumStock", th.IntegerType, description="Maximum stock level"),
-            th.Property("skuCode", th.StringType, description="The product's SKU code"),
-            th.Property("articleCode", th.StringType, description="The product's article code"),
-            th.Property("novel", th.BooleanType, description="Whether the product is novel"),
-            th.Property("unlimitedStock", th.BooleanType, description="Whether stock is unlimited"),
-            th.Property("status", th.StringType, description="The product's status"),
-        )),
-        th.Property("relationships", th.ObjectType(
-            th.Property("supplierProducts", th.ObjectType(
-                th.Property("links", th.ObjectType(
-                    th.Property("self", th.StringType),
-                    th.Property("related", th.StringType),
-                )),
-            )),
-            th.Property("sellOrderLines", th.ObjectType(
-                th.Property("links", th.ObjectType(
-                    th.Property("self", th.StringType),
-                    th.Property("related", th.StringType),
-                )),
-            )),
-            th.Property("productComposedFromCompositions", th.ObjectType(
-                th.Property("links", th.ObjectType(
-                    th.Property("self", th.StringType),
-                    th.Property("related", th.StringType),
-                )),
-            )),
-            th.Property("promotionProducts", th.ObjectType(
-                th.Property("links", th.ObjectType(
-                    th.Property("self", th.StringType),
-                    th.Property("related", th.StringType),
-                )),
-            )),
-            th.Property("account", th.ObjectType(
-                th.Property("links", th.ObjectType(
-                    th.Property("self", th.StringType),
-                    th.Property("related", th.StringType),
-                )),
-            )),
-            th.Property("productPartOfCompositions", th.ObjectType(
-                th.Property("links", th.ObjectType(
-                    th.Property("self", th.StringType),
-                    th.Property("related", th.StringType),
-                )),
-            )),
-            th.Property("buyOrderLines", th.ObjectType(
-                th.Property("links", th.ObjectType(
-                    th.Property("self", th.StringType),
-                    th.Property("related", th.StringType),
-                )),
-            )),
-        )),
-        th.Property("links", th.ObjectType(
-            th.Property("self", th.StringType),
-        )),
-    ).to_dict()
+    def __init__(self, tap: t.Any, api: OptiplyAPI, **kwargs: t.Any) -> None:
+        """Initialize the stream.
+
+        Args:
+            tap: The tap instance.
+            api: The API client instance.
+            **kwargs: Stream keyword arguments.
+        """
+        super().__init__(tap=tap, api=api, **kwargs)
+
+    def get_url_params(
+        self, context: t.Optional[t.Dict[str, t.Any]] = None
+    ) -> t.Dict[str, t.Any]:
+        """Get URL parameters for the request."""
+        params = super().get_url_params(context)
+        params["limit"] = 100
+        return params
 
     def get_records(
         self,
@@ -195,7 +171,13 @@ class ProductsStream(TapOptiplyStream):
         Yields:
             Product records.
         """
-        yield from super().get_records(context)
+        params = {}
+        start_date = self.get_starting_timestamp(context)
+        if start_date:
+            params["filter[updatedAt][GT]"] = start_date.isoformat()
+
+        for record in self.api.get_records(self.name, params):
+            yield self._prepare_record(record)
 
 
 class SuppliersStream(TapOptiplyStream):

@@ -96,24 +96,8 @@ class TapOptiply(Tap):
         Returns:
             The API client.
         """
-        if self._api is None:
-            # Get configuration from either nested 'config' object or root level
-            config = dict(self.config.get("config", self.config))
-            
-            # Required parameters
-            username = config.get("username")
-            password = config.get("password")
-            account_id = config.get("account_id")
-            
-            if not username or not password or not account_id:
-                raise ValueError("Missing required configuration: username, password, and account_id are required")
-            
-            self._api = OptiplyAPI(
-                username=username,
-                password=password,
-                account_id=account_id,
-                config=config,
-            )
+        if not self._api:
+            self._api = OptiplyAPI(config=self.config)
         return self._api
 
     def discover_streams(self) -> list[streams.TapOptiplyStream]:
@@ -122,29 +106,21 @@ class TapOptiply(Tap):
         Returns:
             A list of discovered streams.
         """
-        # Get configuration from either nested 'config' object or root level
-        config = dict(self.config.get("config", self.config))
-        
-        # Required parameters
-        account_id = config.get("account_id")
-        if not account_id:
-            raise ValueError("account_id is required in configuration")
-            
-        # Use default start_date if not provided
-        start_date = config.get("start_date", "2000-01-01T00:00:00.000Z")
-        
+        account_id = self.config.get("account_id")
+        start_date = self.config.get("start_date")
+
         return [
-            streams.ProductsStream(tap=self, api=self.api, context={"account_id": account_id, "start_date": start_date}),
-            streams.SuppliersStream(tap=self, api=self.api, context={"account_id": account_id, "start_date": start_date}),
-            streams.SupplierProductsStream(tap=self, api=self.api, context={"account_id": account_id, "start_date": start_date}),
-            streams.BuyOrdersStream(tap=self, api=self.api, context={"account_id": account_id, "start_date": start_date}),
-            streams.BuyOrderLinesStream(tap=self, api=self.api, context={"account_id": account_id, "start_date": start_date}),
-            streams.SellOrdersStream(tap=self, api=self.api, context={"account_id": account_id, "start_date": start_date}),
-            streams.SellOrderLinesStream(tap=self, api=self.api, context={"account_id": account_id, "start_date": start_date}),
-            streams.ReceiptLinesStream(tap=self, api=self.api, context={"account_id": account_id, "start_date": start_date}),
-            streams.ProductCompositionsStream(tap=self, api=self.api, context={"account_id": account_id, "start_date": start_date}),
-            streams.PromotionsStream(tap=self, api=self.api, context={"account_id": account_id, "start_date": start_date}),
-            streams.PromotionProductsStream(tap=self, api=self.api, context={"account_id": account_id, "start_date": start_date}),
+            streams.ProductsStream(tap=self, api=self.api),
+            streams.SuppliersStream(tap=self, api=self.api),
+            streams.BuyOrdersStream(tap=self, api=self.api),
+            streams.BuyOrderLinesStream(tap=self, api=self.api),
+            streams.SellOrdersStream(tap=self, api=self.api),
+            streams.SellOrderLinesStream(tap=self, api=self.api),
+            streams.ReceiptLinesStream(tap=self, api=self.api),
+            streams.SupplierProductsStream(tap=self, api=self.api),
+            streams.ProductCompositionsStream(tap=self, api=self.api),
+            streams.PromotionsStream(tap=self, api=self.api),
+            streams.PromotionProductsStream(tap=self, api=self.api),
         ]
 
     def get_stream_types(self) -> list[type[streams.TapOptiplyStream]]:
