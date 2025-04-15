@@ -146,8 +146,15 @@ class OptiplyStream(RESTStreamBase):
     ) -> Dict[str, Any]:
         """Get URL parameters for the request."""
         params = super().get_url_params(context)
+        
+        # Add account_id filter if available
+        if self.api and hasattr(self.api, 'account_id') and self.api.account_id:
+            params["filter[accountId]"] = self.api.account_id
+            
+        # Add replication key if available
         if self.replication_key:
-            params["updatedAt"] = self.get_starting_timestamp(context)
+            params["filter[updatedAt][GT]"] = self.get_starting_timestamp(context)
+            
         return params
 
 class OptiplyAPI:
