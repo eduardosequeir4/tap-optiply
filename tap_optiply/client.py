@@ -153,9 +153,13 @@ class OptiplyAPI:
         # Initialize offset if not provided
         if "page[offset]" not in params:
             params["page[offset]"] = 0
+
+        # Add account_id filter to params
+        request_params = self._get_default_params()
+        request_params.update(params)
             
         while True:
-            response = self._make_request("GET", url, params=params)
+            response = self._make_request("GET", url, params=request_params)
             data = response.json()
             
             for record in data.get("data", []):
@@ -173,7 +177,7 @@ class OptiplyAPI:
             
             # Update params with the new values from the next URL
             for key, value in query_params.items():
-                params[key] = value[0]  # Take the first value from the list
+                request_params[key] = value[0]  # Take the first value from the list
 
     def _update_token(self) -> None:
         """Update the access token."""
@@ -304,7 +308,11 @@ class OptiplyAPI:
 
         while True:
             try:
-                current_params = params.copy() if params else {}
+                # Start with default params including account_id
+                current_params = self._get_default_params()
+                # Update with user params if provided
+                if params:
+                    current_params.update(params)
                 current_params.update({
                     "page[limit]": page_size,
                     "page[offset]": offset,
@@ -344,7 +352,11 @@ class OptiplyAPI:
 
         while True:
             try:
-                current_params = params.copy() if params else {}
+                # Start with default params including account_id
+                current_params = self._get_default_params()
+                # Update with user params if provided
+                if params:
+                    current_params.update(params)
                 current_params.update({
                     "page[limit]": page_size,
                     "page[offset]": offset,
@@ -384,7 +396,11 @@ class OptiplyAPI:
 
         while True:
             try:
-                current_params = params.copy() if params else {}
+                # Start with default params including account_id
+                current_params = self._get_default_params()
+                # Update with user params if provided
+                if params:
+                    current_params.update(params)
                 current_params.update({
                     "page[limit]": page_size,
                     "page[offset]": offset,
@@ -424,7 +440,11 @@ class OptiplyAPI:
 
         while True:
             try:
-                current_params = params.copy() if params else {}
+                # Start with default params including account_id
+                current_params = self._get_default_params()
+                # Update with user params if provided
+                if params:
+                    current_params.update(params)
                 current_params.update({
                     "page[limit]": page_size,
                     "page[offset]": offset,
@@ -464,7 +484,11 @@ class OptiplyAPI:
 
         while True:
             try:
-                current_params = params.copy() if params else {}
+                # Start with default params including account_id
+                current_params = self._get_default_params()
+                # Update with user params if provided
+                if params:
+                    current_params.update(params)
                 current_params.update({
                     "page[limit]": page_size,
                     "page[offset]": offset,
@@ -504,7 +528,11 @@ class OptiplyAPI:
 
         while True:
             try:
-                current_params = params.copy() if params else {}
+                # Start with default params including account_id
+                current_params = self._get_default_params()
+                # Update with user params if provided
+                if params:
+                    current_params.update(params)
                 current_params.update({
                     "page[limit]": page_size,
                     "page[offset]": offset,
@@ -544,7 +572,11 @@ class OptiplyAPI:
 
         while True:
             try:
-                current_params = params.copy() if params else {}
+                # Start with default params including account_id
+                current_params = self._get_default_params()
+                # Update with user params if provided
+                if params:
+                    current_params.update(params)
                 current_params.update({
                     "page[limit]": page_size,
                     "page[offset]": offset,
@@ -596,6 +628,17 @@ class OptiplyAPI:
             params = kwargs['params']
             if not any(key.startswith('page[') for key in params):
                 params['page[limit]'] = 25  # Smaller page size to reduce response size
+                
+        # Log detailed request information
+        logger.info(f"Making {method} request to {url}")
+        if 'params' in kwargs:
+            logger.info(f"Request parameters: {kwargs['params']}")
+        if 'headers' in kwargs:
+            # Mask sensitive headers
+            headers = kwargs['headers'].copy()
+            if 'Authorization' in headers:
+                headers['Authorization'] = 'Bearer [REDACTED]'
+            logger.info(f"Request headers: {headers}")
                 
         try:
             response = self.session.request(method, url, **kwargs)

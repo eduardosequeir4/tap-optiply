@@ -64,8 +64,12 @@ class TapOptiplyStream(Stream):
         if start_date:
             # Use the correct filter format for date filtering
             params[f"filter[{self.replication_key}][GT]"] = start_date.isoformat()
-        if context and context.get("account_id"):
-            # Use the correct filter format for accountId
+        
+        # Always include account_id from the API client if available
+        if hasattr(self.api, '_account_id') and self.api._account_id:
+            params["filter[accountId]"] = self.api._account_id
+        # Fallback to context if available
+        elif context and context.get("account_id"):
             params["filter[accountId]"] = context["account_id"]
 
         for record in self.api.get_records(self.name, params):
