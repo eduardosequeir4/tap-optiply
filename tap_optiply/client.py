@@ -148,7 +148,7 @@ class OptiplyAPI:
         
         # Set default page size if not provided
         if "page[limit]" not in params:
-            params["page[limit]"] = 50
+            params["page[limit]"] = 100
             
         # Initialize offset if not provided
         if "page[offset]" not in params:
@@ -179,33 +179,25 @@ class OptiplyAPI:
             for key, value in query_params.items():
                 request_params[key] = value[0]  # Take the first value from the list
 
-    def _update_token(self) -> None:
-        """Update the access token."""
-        logger.info("Attempting to get access token...")
-        
-        # Create Basic Auth header for token request
+    def _create_basic_auth_header(self) -> str:
+        """Create Basic Auth header for token requests.
+
+        Returns:
+            Basic Auth header string.
+        """
         auth_string = f"{self._config.get('client_id')}:{self._config.get('client_secret')}"
         auth_bytes = auth_string.encode('ascii')
         base64_auth = base64.b64encode(auth_bytes).decode('ascii')
-        basic_auth = f"Basic {base64_auth}"
-        
-        auth_response = self._make_request(
-            "POST",
-            self._auth_url,
-            headers={
-                "Content-Type": "application/x-www-form-urlencoded",
-                "Authorization": basic_auth,
-            },
-            data={
-                "grant_type": "password",
-                "username": self._username,
-                "password": self._password,
-            },
-        )
-        
-        token_data = auth_response.json()
+        return f"Basic {base64_auth}"
+
+    def _update_token_info(self, token_data: dict) -> None:
+        """Update token information from response data.
+
+        Args:
+            token_data: Token data from API response.
+        """
         self._token = token_data["access_token"]
-        self._refresh_token = token_data["refresh_token"]
+        self._refresh_token = token_data.get("refresh_token", self._refresh_token)
         self._token_type = token_data["token_type"]
         self._scope = token_data["scope"]
         # Set expiration time (subtract 60 seconds for safety margin)
@@ -227,6 +219,26 @@ class OptiplyAPI:
         self.session.headers["Authorization"] = f"Bearer {self._token}"
         logger.debug(f"Updated session headers: {self.session.headers}")
 
+    def _update_token(self) -> None:
+        """Update the access token."""
+        logger.info("Attempting to get access token...")
+        
+        auth_response = self._make_request(
+            "POST",
+            self._auth_url,
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Authorization": self._create_basic_auth_header(),
+            },
+            data={
+                "grant_type": "password",
+                "username": self._username,
+                "password": self._password,
+            },
+        )
+        
+        self._update_token_info(auth_response.json())
+
     def _refresh_token_if_needed(self) -> None:
         """Refresh the token if it's expired or about to expire."""
         current_time = time.time()
@@ -234,18 +246,12 @@ class OptiplyAPI:
             if self._refresh_token:
                 logger.info("Attempting to refresh token...")
                 
-                # Create Basic Auth header for token refresh
-                auth_string = f"{self._config.get('client_id')}:{self._config.get('client_secret')}"
-                auth_bytes = auth_string.encode('ascii')
-                base64_auth = base64.b64encode(auth_bytes).decode('ascii')
-                basic_auth = f"Basic {base64_auth}"
-                
                 auth_response = self._make_request(
                     "POST",
                     self._auth_url,
                     headers={
                         "Content-Type": "application/x-www-form-urlencoded",
-                        "Authorization": basic_auth,
+                        "Authorization": self._create_basic_auth_header(),
                     },
                     data={
                         "grant_type": "refresh_token",
@@ -253,28 +259,7 @@ class OptiplyAPI:
                     },
                 )
                 
-                token_data = auth_response.json()
-                self._token = token_data["access_token"]
-                self._refresh_token = token_data.get("refresh_token", self._refresh_token)
-                self._token_type = token_data["token_type"]
-                self._scope = token_data["scope"]
-                self._token_expires_at = time.time() + token_data["expires_in"] - 60
-                
-                # Update config with new token information
-                if "apiCredentials" not in self._config:
-                    self._config["apiCredentials"] = {}
-                self._config["apiCredentials"].update({
-                    "access_token": self._token,
-                    "refresh_token": self._refresh_token,
-                    "token_expires_at": self._token_expires_at,
-                })
-                
-                logger.info(f"Got refreshed token: {self._token[:10]}...")
-                logger.debug(f"Token type: {self._token_type}")
-                
-                # Update authorization header with Bearer token
-                self.session.headers["Authorization"] = f"Bearer {self._token}"
-                logger.debug(f"Updated session headers: {self.session.headers}")
+                self._update_token_info(auth_response.json())
             else:
                 self._update_token()
 
@@ -292,17 +277,19 @@ class OptiplyAPI:
         """
         return {"filter[accountId]": self._account_id}
 
-    def get_products(self, params: dict | None = None) -> t.Iterator[dict]:
-        """Get products from Optiply API.
+    def _get_paginated_records(self, endpoint: str, params: dict | None = None, record_type: str = "records") -> t.Iterator[dict]:
+        """Get paginated records from Optiply API.
 
         Args:
-            params: Optional query parameters.
+            endpoint: API endpoint path (e.g. 'products', 'buyOrders')
+            params: Optional query parameters
+            record_type: Description of the record type for logging (e.g. "products", "buy orders")
 
         Yields:
-            Product records.
+            API records
         """
-        url = f"{self.base_url}/products"
-        page_size = 25
+        url = f"{self.base_url}/{endpoint}"
+        page_size = 100
         offset = 0
         total_records = 0
 
@@ -322,7 +309,7 @@ class OptiplyAPI:
                 data = response.json()
                 records = data.get("data", [])
                 total_records += len(records)
-                logger.info(f"Retrieved {len(records)} products (total: {total_records})")
+                logger.info(f"Retrieved {len(records)} {record_type} (total: {total_records})")
 
                 for record in records:
                     yield record
@@ -333,8 +320,19 @@ class OptiplyAPI:
                 offset += page_size
 
             except (Timeout, HTTPError) as e:
-                logger.error(f"Error fetching products: {str(e)}")
+                logger.error(f"Error fetching {record_type}: {str(e)}")
                 raise
+
+    def get_products(self, params: dict | None = None) -> t.Iterator[dict]:
+        """Get products from Optiply API.
+
+        Args:
+            params: Optional query parameters.
+
+        Yields:
+            Product records.
+        """
+        return self._get_paginated_records("products", params, "products")
 
     def get_suppliers(self, params: dict | None = None) -> t.Iterator[dict]:
         """Get suppliers from Optiply API.
@@ -345,40 +343,7 @@ class OptiplyAPI:
         Yields:
             Supplier records.
         """
-        url = f"{self.base_url}/suppliers"
-        page_size = 25
-        offset = 0
-        total_records = 0
-
-        while True:
-            try:
-                # Start with default params including account_id
-                current_params = self._get_default_params()
-                # Update with user params if provided
-                if params:
-                    current_params.update(params)
-                current_params.update({
-                    "page[limit]": page_size,
-                    "page[offset]": offset,
-                })
-
-                response = self._make_request("GET", url, params=current_params)
-                data = response.json()
-                records = data.get("data", [])
-                total_records += len(records)
-                logger.info(f"Retrieved {len(records)} suppliers (total: {total_records})")
-
-                for record in records:
-                    yield record
-
-                if len(records) < page_size:
-                    break
-
-                offset += page_size
-
-            except (Timeout, HTTPError) as e:
-                logger.error(f"Error fetching suppliers: {str(e)}")
-                raise
+        return self._get_paginated_records("suppliers", params, "suppliers")
 
     def get_supplier_products(self, params: dict | None = None) -> t.Iterator[dict]:
         """Get supplier products from Optiply API.
@@ -389,40 +354,7 @@ class OptiplyAPI:
         Yields:
             Supplier product records.
         """
-        url = f"{self.base_url}/supplierProducts"
-        page_size = 25
-        offset = 0
-        total_records = 0
-
-        while True:
-            try:
-                # Start with default params including account_id
-                current_params = self._get_default_params()
-                # Update with user params if provided
-                if params:
-                    current_params.update(params)
-                current_params.update({
-                    "page[limit]": page_size,
-                    "page[offset]": offset,
-                })
-
-                response = self._make_request("GET", url, params=current_params)
-                data = response.json()
-                records = data.get("data", [])
-                total_records += len(records)
-                logger.info(f"Retrieved {len(records)} supplier products (total: {total_records})")
-
-                for record in records:
-                    yield record
-
-                if len(records) < page_size:
-                    break
-
-                offset += page_size
-
-            except (Timeout, HTTPError) as e:
-                logger.error(f"Error fetching supplier products: {str(e)}")
-                raise
+        return self._get_paginated_records("supplierProducts", params, "supplier products")
 
     def get_buy_orders(self, params: dict | None = None) -> t.Iterator[dict]:
         """Get buy orders from Optiply API.
@@ -433,40 +365,7 @@ class OptiplyAPI:
         Yields:
             Buy order records.
         """
-        url = f"{self.base_url}/buyOrders"
-        page_size = 25
-        offset = 0
-        total_records = 0
-
-        while True:
-            try:
-                # Start with default params including account_id
-                current_params = self._get_default_params()
-                # Update with user params if provided
-                if params:
-                    current_params.update(params)
-                current_params.update({
-                    "page[limit]": page_size,
-                    "page[offset]": offset,
-                })
-
-                response = self._make_request("GET", url, params=current_params)
-                data = response.json()
-                records = data.get("data", [])
-                total_records += len(records)
-                logger.info(f"Retrieved {len(records)} buy orders (total: {total_records})")
-
-                for record in records:
-                    yield record
-
-                if len(records) < page_size:
-                    break
-
-                offset += page_size
-
-            except (Timeout, HTTPError) as e:
-                logger.error(f"Error fetching buy orders: {str(e)}")
-                raise
+        return self._get_paginated_records("buyOrders", params, "buy orders")
 
     def get_sell_orders(self, params: dict | None = None) -> t.Iterator[dict]:
         """Get sell orders from Optiply API.
@@ -477,40 +376,7 @@ class OptiplyAPI:
         Yields:
             Sell order records.
         """
-        url = f"{self.base_url}/sellOrders"
-        page_size = 25
-        offset = 0
-        total_records = 0
-
-        while True:
-            try:
-                # Start with default params including account_id
-                current_params = self._get_default_params()
-                # Update with user params if provided
-                if params:
-                    current_params.update(params)
-                current_params.update({
-                    "page[limit]": page_size,
-                    "page[offset]": offset,
-                })
-
-                response = self._make_request("GET", url, params=current_params)
-                data = response.json()
-                records = data.get("data", [])
-                total_records += len(records)
-                logger.info(f"Retrieved {len(records)} sell orders (total: {total_records})")
-
-                for record in records:
-                    yield record
-
-                if len(records) < page_size:
-                    break
-
-                offset += page_size
-
-            except (Timeout, HTTPError) as e:
-                logger.error(f"Error fetching sell orders: {str(e)}")
-                raise
+        return self._get_paginated_records("sellOrders", params, "sell orders")
 
     def get_buy_order_lines(self, params: dict | None = None) -> t.Iterator[dict]:
         """Get buy order lines from Optiply API.
@@ -521,40 +387,7 @@ class OptiplyAPI:
         Yields:
             Buy order line records.
         """
-        url = f"{self.base_url}/buyOrderLines"
-        page_size = 25
-        offset = 0
-        total_records = 0
-
-        while True:
-            try:
-                # Start with default params including account_id
-                current_params = self._get_default_params()
-                # Update with user params if provided
-                if params:
-                    current_params.update(params)
-                current_params.update({
-                    "page[limit]": page_size,
-                    "page[offset]": offset,
-                })
-
-                response = self._make_request("GET", url, params=current_params)
-                data = response.json()
-                records = data.get("data", [])
-                total_records += len(records)
-                logger.info(f"Retrieved {len(records)} buy order lines (total: {total_records})")
-
-                for record in records:
-                    yield record
-
-                if len(records) < page_size:
-                    break
-
-                offset += page_size
-
-            except (Timeout, HTTPError) as e:
-                logger.error(f"Error fetching buy order lines: {str(e)}")
-                raise
+        return self._get_paginated_records("buyOrderLines", params, "buy order lines")
 
     def get_sell_order_lines(self, params: dict | None = None) -> t.Iterator[dict]:
         """Get sell order lines from Optiply API.
@@ -565,40 +398,7 @@ class OptiplyAPI:
         Yields:
             Sell order line records.
         """
-        url = f"{self.base_url}/sellOrderLines"
-        page_size = 25
-        offset = 0
-        total_records = 0
-
-        while True:
-            try:
-                # Start with default params including account_id
-                current_params = self._get_default_params()
-                # Update with user params if provided
-                if params:
-                    current_params.update(params)
-                current_params.update({
-                    "page[limit]": page_size,
-                    "page[offset]": offset,
-                })
-
-                response = self._make_request("GET", url, params=current_params)
-                data = response.json()
-                records = data.get("data", [])
-                total_records += len(records)
-                logger.info(f"Retrieved {len(records)} sell order lines (total: {total_records})")
-
-                for record in records:
-                    yield record
-
-                if len(records) < page_size:
-                    break
-
-                offset += page_size
-
-            except (Timeout, HTTPError) as e:
-                logger.error(f"Error fetching sell order lines: {str(e)}")
-                raise
+        return self._get_paginated_records("sellOrderLines", params, "sell order lines")
 
     @retry_with_backoff(max_retries=3, initial_delay=1.0)
     def _make_request(self, method: str, url: str, **kwargs) -> requests.Response:
@@ -627,7 +427,7 @@ class OptiplyAPI:
         if method == "GET" and 'params' in kwargs:
             params = kwargs['params']
             if not any(key.startswith('page[') for key in params):
-                params['page[limit]'] = 25  # Smaller page size to reduce response size
+                params['page[limit]'] = 100  # Larger page size to increase efficiency
                 
         # Log detailed request information
         logger.info(f"Making {method} request to {url}")

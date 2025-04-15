@@ -47,6 +47,20 @@ class TapOptiplyStream(Stream):
         rep_key = self.get_starting_timestamp(context)
         return rep_key or start_date
 
+    def _prepare_record(self, record: dict) -> dict:
+        """Prepare a record for output by copying updatedAt from attributes if needed.
+
+        Args:
+            record: The record to prepare.
+
+        Returns:
+            The prepared record.
+        """
+        # Copy updatedAt from attributes to root level if it exists
+        if "attributes" in record and "updatedAt" in record["attributes"]:
+            record["updatedAt"] = record["attributes"]["updatedAt"]
+        return record
+
     def get_records(
         self,
         context: t.Optional[dict] = None,
@@ -77,10 +91,7 @@ class TapOptiplyStream(Stream):
             params["filter[accountId]"] = context["account_id"]
 
         for record in self.api.get_records(self.name, params):
-            # Copy updatedAt from attributes to root level if it exists
-            if "attributes" in record and "updatedAt" in record["attributes"]:
-                record["updatedAt"] = record["attributes"]["updatedAt"]
-            yield record
+            yield self._prepare_record(record)
 
 
 class ProductsStream(TapOptiplyStream):
@@ -509,9 +520,6 @@ class BuyOrderLinesStream(TapOptiplyStream):
 
     def get_records(self, context: t.Optional[dict] = None) -> t.Iterable[dict]:
         """Yield buy order line records."""
-        params = {}
-        if context and "buyOrderId" in context:
-            params["filter[buyOrderId]"] = context["buyOrderId"]
         yield from super().get_records(context)
 
 
@@ -552,9 +560,6 @@ class SellOrderLinesStream(TapOptiplyStream):
 
     def get_records(self, context: t.Optional[dict] = None) -> t.Iterable[dict]:
         """Yield sell order line records."""
-        params = {}
-        if context and "sellOrderId" in context:
-            params["filter[sellOrderId]"] = context["sellOrderId"]
         yield from super().get_records(context)
 
 
