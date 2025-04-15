@@ -62,8 +62,12 @@ class TapOptiplyStream(Stream):
         params = {}
         start_date = self.get_starting_time(context)
         if start_date:
-            # Use the correct filter format for date filtering
-            params[f"filter[{self.replication_key}][GT]"] = start_date.isoformat()
+            # Ensure replication_key is defined and use it in the filter
+            if hasattr(self, 'replication_key') and self.replication_key:
+                params[f"filter[{self.replication_key}][GT]"] = start_date.isoformat()
+            else:
+                # Fallback to updatedAt if replication_key is not defined
+                params["filter[updatedAt][GT]"] = start_date.isoformat()
         
         # Always include account_id from the API client if available
         if hasattr(self.api, '_account_id') and self.api._account_id:
