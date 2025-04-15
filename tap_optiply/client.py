@@ -15,6 +15,7 @@ from typing import Any, Dict, Optional
 from singer_sdk.streams import Stream as RESTStreamBase
 from tap_optiply.auth import OptiplyAuthenticator
 import json
+import os
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)  # Set root logger to DEBUG
@@ -92,7 +93,7 @@ class OptiplyStream(RESTStreamBase):
         """
         super().__init__(tap=tap, **kwargs)
         self.api = api
-        self.authenticator = OptiplyAuthenticator.create_for_stream(self)
+        self.authenticator = OptiplyAuthenticator(tap.config)
 
     def _prepare_record(self, record: dict) -> dict:
         """Prepare a record for output by copying updatedAt from attributes if needed.
@@ -109,7 +110,8 @@ class OptiplyStream(RESTStreamBase):
         return record
 
     def get_url_params(
-        self, context: Optional[Dict[str, Any]] = None
+        self,
+        context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Get URL parameters for the request."""
         params = super().get_url_params(context)
@@ -136,7 +138,7 @@ class OptiplyStream(RESTStreamBase):
     ) -> Dict[str, Any]:
         """Make a request to the Optiply API."""
         url = f"{self.url_base}{path}"
-        headers = self.authenticator.auth_headers
+        headers = self.authenticator.get_auth_headers()
 
         logger.info(f"Making {method} request to {url}")
         if params:
@@ -164,223 +166,66 @@ class OptiplyStream(RESTStreamBase):
 class OptiplyAPI:
     """Optiply API client."""
 
-    def __init__(self, config: dict) -> None:
+    def __init__(this, config: dict, tap: Optional[Any] = None) -> None:
         """Initialize the API client.
 
         Args:
             config: Configuration dictionary.
+            tap: Optional tap instance.
         """
-        self.config = config
-        self._access_token = None
-        self._account_id = config.get("account_id")  # Set account_id from config
-        self._session = requests.Session()
-        self._session.headers.update({
+        this.config = config
+        this._tap = tap
+        this.session = requests.Session()
+        this.authenticator = OptiplyAuthenticator(config)
+        this.session.headers.update({
             "Accept": "application/vnd.api+json",
             "Content-Type": "application/vnd.api+json",
         })
-        
-        # Extract credentials from config
-        self.username = config.get("username")
-        self.password = config.get("password")
-        self.client_id = config.get("client_id")
-        self.client_secret = config.get("client_secret")
-        
-        # Create Basic Auth header for token requests - using the exact format from the example
-        credentials = f"{self.client_id}:{self.client_secret}"
-        encoded_credentials = base64.b64encode(credentials.encode()).decode()
-        self.auth_header = f"Basic {encoded_credentials}"
-        
-        # Set the base URL for API requests
-        self.base_url = "https://dashboard.optiply.nl/api"
-        
-        # Get initial token
-        self._get_access_token()
+        this.session.headers.update(this.authenticator.get_auth_headers())
 
-    def _get_access_token(self):
-        """Get OAuth access token using client credentials flow."""
-        try:
-            # Construct the token URL with grant_type as a query parameter
-            token_url = f"{self.base_url}/auth/oauth/token?grant_type=password"
-            
-            # Create Basic Auth header using client_id and client_secret
-            auth_string = f"{self.client_id}:{self.client_secret}"
-            auth_bytes = auth_string.encode('ascii')
-            base64_auth = base64.b64encode(auth_bytes).decode('ascii')
-            
-            # Set up headers and data
-            headers = {
-                'Authorization': f'Basic {base64_auth}',
-                'Content-Type': 'application/x-www-form-urlencoded'
-            }
-            
-            data = {
-                'username': self.username,
-                'password': self.password
-            }
-            
-            # Make the token request
-            response = requests.post(
-                token_url,
-                headers=headers,
-                data=data
-            )
-            
-            # Check for HTTP errors
-            response.raise_for_status()
-            
-            # Parse the response
-            token_data = response.json()
-            
-            # Validate required fields
-            if 'access_token' not in token_data:
-                raise ValueError("Access token not found in response")
-                
-            # Store the token and its expiration
-            self._access_token = token_data['access_token']
-            if 'expires_in' in token_data:
-                self.token_expires_at = time.time() + token_data['expires_in']
-            
-            # Store token in config
-            self.config['access_token'] = self._access_token
-            self.config['token_expires_at'] = self.token_expires_at
-            
-            # Save config to file
-            config_path = self.config.get('config_path', 'config.json')
-            with open(config_path, 'w') as f:
-                json.dump(self.config, f, indent=2)
-            logger.info("Config saved with valid token")
-            
-            # Update session headers with the new token
-            self._session.headers.update({"Authorization": f"Bearer {self._access_token}"})
-            
-            logger.info("Successfully obtained new access token")
-            
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Failed to obtain access token: {str(e)}")
-            if hasattr(e.response, 'text'):
-                logger.error(f"Response content: {e.response.text}")
-            raise
-
-    def _get_account_id(self) -> int:
-        """Get the account ID from the API.
-
-        Returns:
-            The account ID.
-        """
-        if self._account_id:
-            return self._account_id
-
-        # If no account_id in config, fetch it from the API
-        url = f"{self.base_url}/accounts"
-        response = self._session.get(url)
-        response.raise_for_status()
-        self._account_id = response.json()["data"][0]["id"]
-        return self._account_id
-
-    @retry_with_backoff(max_retries=3, initial_delay=1.0)
-    def _make_request(self, method: str, url: str, **kwargs) -> requests.Response:
-        """Make an HTTP request with retry logic and timeout.
+    def _make_request(self, method: str, url: str, **kwargs) -> dict:
+        """Make a request to the API.
 
         Args:
-            method: HTTP method (GET, POST, etc.)
-            url: URL to make the request to
-            **kwargs: Additional arguments to pass to requests
-            
+            method: HTTP method.
+            url: URL to request.
+            **kwargs: Additional arguments to pass to requests.
+
         Returns:
-            Response object
-
-        Raises:
-            RequestException: If the request fails after all retries
+            dict: Response data.
         """
-        # Set default timeout if not provided
-        if 'timeout' not in kwargs:
-            # For GET requests to endpoints that return large responses, use a longer read timeout
-            if method == "GET" and any(endpoint in url for endpoint in ["/sellOrderLines", "/products"]):
-                kwargs['timeout'] = (5, 120)  # (connect timeout, read timeout)
-            else:
-                kwargs['timeout'] = (5, 30)  # (connect timeout, read timeout)
-            
-        # Set default pagination parameters for GET requests
-        if method == "GET":
-            params = kwargs.get('params', {})
-            if params is None:
-                params = {}
-            if not any(key.startswith('page[') for key in params):
-                params['page[limit]'] = 100  # Larger page size to increase efficiency
-            kwargs['params'] = params
-                
-        # Log detailed request information
-        full_url = url
-        if 'params' in kwargs and kwargs['params']:
-            # Construct full URL with query parameters for logging
-            query_string = urllib.parse.urlencode(kwargs['params'], doseq=True)
-            full_url = f"{url}?{query_string}"
-            
-        logger.info(f"Making {method} request to: {full_url}")
-        logger.info(f"Request parameters: {kwargs.get('params', {})}")
+        # Update headers with latest auth token
+        self.session.headers.update(self.authenticator.get_auth_headers())
         
-        # Log headers (excluding sensitive information)
-        if 'headers' in kwargs:
-            headers = kwargs['headers'].copy()
-            if 'Authorization' in headers:
-                headers['Authorization'] = 'Bearer [REDACTED]'
-            logger.info(f"Request headers: {headers}")
-                
-        try:
-            response = self._session.request(method, url, **kwargs)
-            response.raise_for_status()
-            
-            # Log response information
-            logger.info(f"Response status: {response.status_code}")
-            logger.info(f"Response headers: {dict(response.headers)}")
-            
-            # Check for empty responses
-            if response.status_code == 204:
-                logger.debug(f"Received empty response (204) from {full_url}")
-                return response
-                
-            # Check for valid JSON response
-            try:
-                json_response = response.json()
-                # Log response size and record count if available
-                if isinstance(json_response, dict):
-                    if 'data' in json_response:
-                        record_count = len(json_response['data'])
-                        logger.info(f"Response contains {record_count} records")
-                    if 'meta' in json_response and 'total' in json_response['meta']:
-                        logger.info(f"Total records available: {json_response['meta']['total']}")
-            except ValueError as e:
-                logger.error(f"Invalid JSON response from {full_url}: {str(e)}")
-                logger.error(f"Response content: {response.text[:200]}...")
-                raise HTTPError(f"Invalid JSON response: {str(e)}")
-                
-            return response
-            
-        except HTTPError as e:
-            if e.response.status_code == 401:  # Unauthorized
-                logger.error(f"Authentication failed for {full_url}")
-                raise
-            elif e.response.status_code == 403:  # Forbidden
-                logger.error(f"Access forbidden for {full_url}")
-                raise
-            elif e.response.status_code == 404:  # Not Found
-                logger.error(f"Resource not found at {full_url}")
-                raise
-            elif e.response.status_code == 500:  # Internal Server Error
-                logger.error(f"Server error for {full_url}")
-                raise
-            else:
-                logger.error(f"HTTP error {e.response.status_code} for {full_url}")
-                logger.error(f"Response content: {e.response.text[:200]}...")
-                raise
-        except Timeout as e:
-            logger.error(f"Request timed out for {full_url}")
-            raise
-        except RequestException as e:
-            logger.error(f"Request failed for {full_url}: {str(e)}")
-            raise
+        response = self.session.request(method, url, **kwargs)
+        response.raise_for_status()
+        return response.json()
 
-    def get_records(self, stream_name: str, params: t.Optional[dict] = None) -> t.Iterable[dict]:
+    def get(self, url: str, **kwargs) -> dict:
+        """Make a GET request.
+
+        Args:
+            url: URL to request.
+            **kwargs: Additional arguments to pass to requests.
+
+        Returns:
+            dict: Response data.
+        """
+        return self._make_request("GET", url, **kwargs)
+
+    def post(self, url: str, **kwargs) -> dict:
+        """Make a POST request.
+
+        Args:
+            url: URL to request.
+            **kwargs: Additional arguments to pass to requests.
+
+        Returns:
+            dict: Response data.
+        """
+        return self._make_request("POST", url, **kwargs)
+
+    def get_records(this, stream_name: str, params: t.Optional[dict] = None) -> t.Iterable[dict]:
         """Get records from a stream.
 
         Args:
@@ -396,12 +241,12 @@ class OptiplyAPI:
         url = f"https://api.optiply.com/v1/{path}"
 
         # Ensure accountId is in params if available
-        if self._account_id and params is not None:
-            params['filter[accountId]'] = self._account_id
+        if this.config.get("account_id") and params is not None:
+            params['filter[accountId]'] = this.config["account_id"]
 
         while True:
-            response = self._make_request("GET", url, params=params)
-            data = response.json()
+            response = this._make_request("GET", url, params=params)
+            data = response
 
             for record in data["data"]:
                 yield record
@@ -412,8 +257,8 @@ class OptiplyAPI:
                 # Parse the next URL to preserve accountId
                 parsed_url = urllib.parse.urlparse(data["links"]["next"])
                 query_params = dict(urllib.parse.parse_qsl(parsed_url.query))
-                if self._account_id:
-                    query_params['filter[accountId]'] = self._account_id
+                if this.config.get("account_id"):
+                    query_params['filter[accountId]'] = this.config["account_id"]
                 params = query_params
             else:
                 break

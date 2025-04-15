@@ -4,126 +4,106 @@ import json
 import base64
 import time
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 
 import backoff
 import requests
 from singer_sdk.authenticators import APIAuthenticatorBase
-from singer_sdk.streams import RESTStream
+from singer_sdk.streams import Stream as RESTStreamBase
 
 
-class OptiplyAuthenticator(APIAuthenticatorBase):
+class OptiplyAuthenticator:
     """Authenticator for Optiply API."""
 
     def __init__(
         self,
-        stream: RESTStream,
-        auth_endpoint: str,
-        client_id: str,
-        client_secret: str,
-        username: str,
-        password: str,
+        config: dict,
+        auth_endpoint: str = "https://dashboard.optiply.nl/api/auth/oauth/token",
     ) -> None:
         """Initialize the authenticator.
 
         Args:
-            stream: The stream instance.
+            config: Configuration dictionary.
             auth_endpoint: The authentication endpoint URL.
-            client_id: The client ID.
-            client_secret: The client secret.
-            username: The username.
-            password: The password.
         """
-        super().__init__(stream=stream)
+        self.config = dict(config)  # Make a copy of the config
         self._auth_endpoint = auth_endpoint
-        self._client_id = client_id
-        self._client_secret = client_secret
-        self._username = username
-        self._password = password
         self._access_token = None
         self._token_expires_at = None
         self._load_token_from_config()
 
-    def _load_token_from_config(self) -> None:
-        """Load token and expiration from config if available."""
-        if "access_token" in self._config and "token_expires_at" in self._config:
-            self._access_token = self._config["access_token"]
-            self._token_expires_at = datetime.fromisoformat(self._config["token_expires_at"])
-            self.auth_headers = {"Authorization": f"Bearer {self._access_token}"}
-            self.logger.info("Loaded token from config")
+    def _load_token_from_config(self) -> bool:
+        """Load token from config if it exists."""
+        if 'access_token' in self.config and 'token_expires_at' in self.config:
+            self._access_token = self.config['access_token']
+            self._token_expires_at = self.config['token_expires_at']
+            return True
+        return False
 
     def _save_token_to_config(self) -> None:
-        """Save token and expiration to config."""
-        self._config["access_token"] = self._access_token
-        self._config["token_expires_at"] = self._token_expires_at.isoformat()
-        self.logger.info("Saved token to config")
+        """Save token to config."""
+        self.config['access_token'] = self._access_token
+        self.config['token_expires_at'] = self._token_expires_at
 
-    def is_token_valid(self) -> bool:
-        """Check if the current token is valid.
-
-        Returns:
-            bool: True if the token is valid, False otherwise.
-        """
+    def _is_token_valid(self) -> bool:
+        """Check if the current token is valid."""
         if not self._access_token or not self._token_expires_at:
             return False
-        return datetime.now() < self._token_expires_at - timedelta(seconds=120)
+        try:
+            now = round(datetime.utcnow().timestamp())
+            expires_in = int(self._token_expires_at)
+            return not ((expires_in - now) < 120)
+        except (ValueError, TypeError):
+            return False
 
+    @backoff.on_exception(backoff.expo, Exception, max_tries=5, factor=2)
     def update_access_token(self) -> None:
         """Update the access token."""
-        auth_string = f"{self._client_id}:{self._client_secret}"
-        auth_bytes = auth_string.encode()
-        auth_b64 = base64.b64encode(auth_bytes).decode()
-
+        # Create Basic Auth header using client_id and client_secret
+        auth_string = f"{self.config['client_id']}:{self.config['client_secret']}"
+        auth_bytes = auth_string.encode('ascii')
+        base64_auth = base64.b64encode(auth_bytes).decode('ascii')
+        
         headers = {
-            "Authorization": f"Basic {auth_b64}",
-            "Content-Type": "application/x-www-form-urlencoded",
+            'Authorization': f'Basic {base64_auth}',
+            'Content-Type': 'application/x-www-form-urlencoded'
         }
-
+        
         data = {
-            "username": self._username,
-            "password": self._password,
+            'username': self.config['username'],
+            'password': self.config['password']
         }
 
         try:
             response = requests.post(
                 f"{self._auth_endpoint}?grant_type=password",
                 headers=headers,
-                data=data,
+                data=data
             )
             response.raise_for_status()
             auth_response = response.json()
 
+            # Update tokens
             self._access_token = auth_response["access_token"]
+            
+            # Update expiration
             expires_in = auth_response.get("expires_in", 3600)
-            self._token_expires_at = datetime.now() + timedelta(seconds=expires_in)
-            self.auth_headers = {"Authorization": f"Bearer {self._access_token}"}
+            now = round(datetime.utcnow().timestamp())
+            self._token_expires_at = int(expires_in) + now
+            
+            # Save to config
             self._save_token_to_config()
-            self.logger.info("Successfully updated access token")
+            
         except Exception as e:
-            self.logger.error(f"Failed to update access token: {str(e)}")
+            print(f"Failed to update access token: {str(e)}")
             raise
 
-    @classmethod
-    def create_for_stream(
-        cls,
-        stream: RESTStream,
-        auth_endpoint: Optional[str] = None,
-    ) -> "OptiplyAuthenticator":
-        """Create an authenticator for the given stream.
-
-        Args:
-            stream: The stream to create the authenticator for.
-            auth_endpoint: The authentication endpoint URL.
+    def get_auth_headers(self) -> Dict[str, str]:
+        """Get the authentication headers.
 
         Returns:
-            OptiplyAuthenticator: The created authenticator.
+            The authentication headers.
         """
-        config = stream._tap.config
-        return cls(
-            stream=stream,
-            auth_endpoint=auth_endpoint or "https://dashboard.optiply.nl/api/auth/oauth/token",
-            client_id=config["client_id"],
-            client_secret=config["client_secret"],
-            username=config["username"],
-            password=config["password"],
-        ) 
+        if not self._is_token_valid():
+            self.update_access_token()
+        return {"Authorization": f"Bearer {self._access_token}"} 

@@ -79,14 +79,9 @@ class TapOptiply(Tap):
         "required": ["username", "password", "account_id", "start_date"],
     }
 
-    def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
-        """Initialize the tap.
-
-        Args:
-            *args: Tap arguments.
-            **kwargs: Tap keyword arguments.
-        """
-        self._api: OptiplyAPI | None = None
+    def __init__(self, *args, **kwargs):
+        """Initialize the tap."""
+        self._api = None
         super().__init__(*args, **kwargs)
 
     @property
@@ -97,7 +92,7 @@ class TapOptiply(Tap):
             The API client.
         """
         if not self._api:
-            self._api = OptiplyAPI(config=self.config)
+            self._api = OptiplyAPI(config=self.config, tap=self)
         return self._api
 
     def discover_streams(self) -> list[streams.TapOptiplyStream]:

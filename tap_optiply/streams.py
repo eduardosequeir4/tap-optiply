@@ -6,6 +6,7 @@ import typing as t
 from importlib import resources
 from dateutil.parser import parse
 from typing import Iterator
+import datetime
 
 from singer_sdk import typing as th  # JSON Schema typing helpers
 from singer_sdk.streams import Stream
@@ -518,9 +519,9 @@ class SellOrderLinesStream(TapOptiplyStream):
         th.Property("type", th.StringType, description="The resource type"),
         th.Property("updatedAt", th.DateTimeType, description="When the sell order line was last updated"),
         th.Property("attributes", th.ObjectType(
-            th.Property("createdAt", th.DateTimeType, description="When the line was created"),
+            th.Property("createdAt", th.DateTimeType, description="When the sell order line was created"),
             th.Property("uuid", th.StringType, description="The sell order line's UUID"),
-            th.Property("quantity", th.NumberType, description="The quantity ordered"),
+            th.Property("quantity", th.IntegerType, description="The quantity ordered"),
             th.Property("productId", th.IntegerType, description="The ID of the product"),
             th.Property("createdFromPublicApi", th.BooleanType, description="Whether created from public API"),
             th.Property("subtotalValue", th.StringType, description="The subtotal value of the line"),
@@ -534,15 +535,25 @@ class SellOrderLinesStream(TapOptiplyStream):
                     th.Property("related", th.StringType),
                 )),
             )),
+            th.Property("sellOrder", th.ObjectType(
+                th.Property("links", th.ObjectType(
+                    th.Property("self", th.StringType),
+                    th.Property("related", th.StringType),
+                )),
+            )),
         )),
         th.Property("links", th.ObjectType(
             th.Property("self", th.StringType),
         )),
     ).to_dict()
 
-    def get_records(self, context: t.Optional[dict] = None) -> t.Iterable[dict]:
-        """Yield sell order line records."""
-        yield from super().get_records(context)
+    def get_url_params(
+        self, context: t.Optional[t.Dict[str, t.Any]] = None
+    ) -> t.Dict[str, t.Any]:
+        """Get URL parameters for the request."""
+        params = super().get_url_params(context)
+        params["limit"] = 100
+        return params
 
 
 class ReceiptLinesStream(TapOptiplyStream):
