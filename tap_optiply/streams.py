@@ -91,6 +91,9 @@ class TapOptiplyStream(Stream):
         elif context and context.get("account_id"):
             params["filter[accountId]"] = context["account_id"]
 
+        # Log the API request details
+        self.logger.info(f"Making API request to {self.name} with params: {params}")
+        
         for record in self.api.get_records(self.name, params):
             yield self._prepare_record(record)
 
@@ -177,6 +180,9 @@ class ProductsStream(OptiplyStream):
         if start_date:
             params["filter[updatedAt][GT]"] = start_date.isoformat()
 
+        # Log the API request details
+        self.logger.info(f"Making API request to {self.name} with params: {params}")
+        
         for record in self.api.get_records(self.name, params):
             yield self._prepare_record(record)
 
