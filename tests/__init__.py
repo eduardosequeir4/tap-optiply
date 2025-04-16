@@ -1,1 +1,1 @@
-"""Test suite for tap-tapoptiply."""
+"""Test suite for tap-optiply."""

@@ -1,42 +1,73 @@
-[tool.poetry]
+[project]
 name = "tap-optiply"
-version = "0.1.0"
-description = "Singer tap for Optiply"
-authors = ["Your Name <your.email@example.com>"]
+version = "0.0.1"
+description = "Singer tap for Optiply, built with the Meltano Singer SDK."
 readme = "README.md"
-packages = [{include = "tap_optiply"}]
+authors = [{ name = "Eduardo Sequeira", email = "eduardosequeira@optiply.nl" }]
+keywords = [
+    "ELT",
+    "Optiply",
+]
+classifiers = [
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+license = "Apache-2.0"
+license-files = [ "LICENSE" ]
+requires-python = ">=3.9"
+dependencies = [
+    "singer-sdk~=0.44.3",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.8.1,<4.0"
-singer-sdk = "^0.34.0"
-requests = "^2.31.0"
-pytz = "^2024.1"
-python-dateutil = "^2.9.0.post0"
+[project.optional-dependencies]
+s3 = [
+    "fs-s3fs~=1.1.1",
+]
 
-[tool.poetry.group.dev.dependencies]
-pytest = "^7.4.3"
-black = "^24.1.1"
-flake8 = "^7.0.0"
-mypy = "^1.8.0"
-isort = "^5.13.2"
+[project.scripts]
+# CLI declaration
+tap-optiply = 'tap_optiply.tap:TapOptiply.cli'
 
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.poetry.scripts]
-tap-optiply = "tap_optiply.tap:TapOptiply.cli"
+[dependency-groups]
+dev = [
+    { include-group = "test" },
+]
+test = [
+    "pytest>=8",
+    "singer-sdk[testing]",
+]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-addopts = "-v --cov=tap_optiply --cov-report=term-missing"
+addopts = [
+    "--durations=10",
+]
 
-[tool.black]
-line-length = 100
-target-version = ["py38"]
+[tool.mypy]
+warn_unused_configs = true
 
-[tool.isort]
-profile = "black"
-line_length = 100
-multi_line_output = 3
+[tool.ruff]
+target-version = "py39"
+
+[tool.ruff.lint]
+ignore = [
+    "COM812",  # missing-trailing-comma
+]
+select = ["ALL"]
+
+[tool.ruff.lint.flake8-annotations]
+allow-star-arg-any = true
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[build-system]
+requires = [
+    "hatchling>=1,<2",
+]
+build-backend = "hatchling.build"

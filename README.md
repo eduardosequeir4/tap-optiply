@@ -1,68 +1,114 @@
-# tap-tapoptiply
+# tap-optiply
 
-This is a Singer tap for Optiply API, built with the Meltano Singer SDK.
+`tap-optiply` is a Singer tap for Optiply.
+
+Built with the [Meltano Tap SDK](https://sdk.meltano.com) for Singer Taps.
+
+<!--
+
+Developer TODO: Update the below as needed to correctly describe the install procedure. For instance, if you do not have a PyPI repo, or if you want users to directly install from your git repo, you can modify this step as appropriate.
 
 ## Installation
 
+Install from PyPI:
+
 ```bash
-poetry install
+pipx install tap-optiply
 ```
+
+Install from GitHub:
+
+```bash
+pipx install git+https://github.com/ORG_NAME/tap-optiply.git@main
+```
+
+-->
 
 ## Configuration
 
-Create a `config.json` file with your Optiply API credentials:
+### Accepted Config Options
 
-```json
-{
-    "apiCredentials": {
-        "username": "your-username@optiply.nl",
-        "password": "your-password",
-        "account_id": 12345
-    }
-}
+<!--
+Developer TODO: Provide a list of config options accepted by the tap.
+
+This section can be created by copy-pasting the CLI output from:
+
+```
+tap-optiply --about --format=markdown
+```
+-->
+
+A full list of supported settings and capabilities for this
+tap is available by running:
+
+```bash
+tap-optiply --about
 ```
 
 ### Configure using environment variables
 
-This Singer tap will automatically import any environment variables within the working directory's `.env` if the `--config=ENV` is provided, such that config values will be considered if a matching environment variable is set either in the terminal context or in the `.env` file.
+This Singer tap will automatically import any environment variables within the working directory's
+`.env` if the `--config=ENV` is provided, such that config values will be considered if a matching
+environment variable is set either in the terminal context or in the `.env` file.
+
+### Source Authentication and Authorization
+
+<!--
+Developer TODO: If your tap requires special access on the source system, or any special authentication requirements, provide those here.
+-->
 
 ## Usage
 
-You can run the tap using Meltano:
+You can easily run `tap-optiply` by itself or in a pipeline using [Meltano](https://meltano.com/).
+
+### Executing the Tap Directly
 
 ```bash
-meltano elt tap-tapoptiply target-jsonl
+tap-optiply --version
+tap-optiply --help
+tap-optiply --config CONFIG --discover > ./catalog.json
 ```
 
-Or directly using the tap:
+## Developer Resources
+
+Follow these instructions to contribute to this project.
+
+### Initialize your Development Environment
+
+Prerequisites:
+
+- Python 3.9+
+- [uv](https://docs.astral.sh/uv/)
 
 ```bash
-poetry run tap-tapoptiply --config config.json
+uv sync
 ```
 
-## Streams
+### Create and Run Tests
 
-The tap includes the following streams:
+Create tests within the `tests` subfolder and
+  then run:
 
-- `products`: Fetches product data from Optiply API
-- `suppliers`: Fetches supplier data from Optiply API
-- `supplier_products`: Fetches supplier product relationships
-- `buy_orders`: Fetches purchase orders
-- `buy_order_lines`: Fetches purchase order line items
-- `sell_orders`: Fetches sales orders
-- `sell_order_lines`: Fetches sales order line items
+```bash
+uv run pytest
+```
 
-## Development
+You can also test the `tap-optiply` CLI interface directly using `uv run`:
 
-To set up the development environment:
+```bash
+uv run tap-optiply --help
+```
 
-1. Install Poetry
-2. Run `poetry install`
-3. Run tests with `poetry run pytest`
+### Testing with [Meltano](https://www.meltano.com)
 
-### Testing with Meltano
+_**Note:** This tap will work in any Singer environment and does not require Meltano.
+Examples here are for convenience and to streamline end-to-end orchestration scenarios._
 
-_**Note:** This tap will work in any Singer environment and does not require Meltano. Examples here are for convenience and to streamline end-to-end orchestration scenarios._
+<!--
+Developer TODO:
+Your project comes with a custom `meltano.yml` project file already created. Open the `meltano.yml` and follow any "TODO" items listed in
+the file.
+-->
 
 Next, install Meltano (if you haven't already) and any needed plugins:
 
@@ -70,7 +116,7 @@ Next, install Meltano (if you haven't already) and any needed plugins:
 # Install meltano
 pipx install meltano
 # Initialize meltano within this directory
-cd tap-tapoptiply
+cd tap-optiply
 meltano install
 ```
 
@@ -78,11 +124,13 @@ Now you can test and orchestrate using Meltano:
 
 ```bash
 # Test invocation:
-meltano invoke tap-tapoptiply --version
-# OR run a test `elt` pipeline:
-meltano run tap-tapoptiply target-jsonl
+meltano invoke tap-optiply --version
+
+# OR run a test ELT pipeline:
+meltano run tap-optiply target-jsonl
 ```
 
 ### SDK Dev Guide
 
-See the [dev guide](https://sdk.meltano.com/en/latest/dev_guide.html) for more instructions on how to use the SDK to develop your own taps and targets.
+See the [dev guide](https://sdk.meltano.com/en/latest/dev_guide.html) for more instructions on how to use the SDK to
+develop your own taps and targets.

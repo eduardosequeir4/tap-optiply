@@ -1,117 +1,142 @@
-"""Optiply Authentication."""
-
-import json
+"""Authentication handler for Optiply API."""
 import base64
-import time
-from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, Union
+from datetime import datetime
+from typing import Dict, Optional
 
-import backoff
 import requests
-from singer_sdk.authenticators import APIAuthenticatorBase
-from singer_sdk.streams import Stream as RESTStreamBase
+from singer_sdk.authenticators import OAuthAuthenticator
+from singer_sdk.streams import RESTStream
+from singer_sdk._singerlib import Message
 
 
-class OptiplyAuthenticator:
-    """Authenticator for Optiply API."""
+class OptiplyAuthenticator(OAuthAuthenticator):
+    """Authenticator class for Optiply API."""
+
+    # Fixed token URL that will never change
+    TOKEN_URL = "https://dashboard.optiply.nl/api/auth/oauth/token"
+    
+    # Store token in class variables
+    _access_token = None
+    _token_expires_at = None
 
     def __init__(
         self,
-        config: dict,
-        tap: Optional[Any] = None,
-        auth_endpoint: str = "https://dashboard.optiply.nl/api/auth/oauth/token",
+        stream: RESTStream,
     ) -> None:
         """Initialize the authenticator.
 
         Args:
-            config: Configuration dictionary.
-            tap: Optional tap instance.
-            auth_endpoint: The authentication endpoint URL.
+            stream: The stream instance
         """
-        self.config = dict(config)  # Make a copy of the config
-        self._auth_endpoint = auth_endpoint
-        self._access_token = None
-        self._token_expires_at = None
-        self._tap = tap
-        self._load_token_from_config()
-
-    def _load_token_from_config(self) -> bool:
-        """Load token from config if it exists."""
-        if 'access_token' in self.config and 'token_expires_at' in self.config:
-            self._access_token = self.config['access_token']
-            self._token_expires_at = self.config['token_expires_at']
-            return True
-        return False
-
-    def _save_token_to_config(self) -> None:
-        """Save token to config."""
-        self.config['access_token'] = self._access_token
-        self.config['token_expires_at'] = self._token_expires_at
+        self._stream = stream
+        super().__init__(stream=stream)
         
-        # Save to config file if tap instance is available
-        if hasattr(self, '_tap') and self._tap and hasattr(self._tap, 'config_file'):
-            with open(self._tap.config_file, "w") as outfile:
-                json.dump(self.config, outfile, indent=4)
+        # Initialize token from config if available
+        if "access_token" in self.stream.config:
+            self._access_token = self.stream.config["access_token"]
+        if "token_expires_at" in self.stream.config:
+            self._token_expires_at = self.stream.config["token_expires_at"]
 
-    def _is_token_valid(self) -> bool:
-        """Check if the current token is valid."""
-        if not self._access_token or not self._token_expires_at:
-            return False
-        try:
-            now = round(datetime.utcnow().timestamp())
-            expires_in = int(self._token_expires_at)
-            return not ((expires_in - now) < 120)
-        except (ValueError, TypeError):
-            return False
-
-    @backoff.on_exception(backoff.expo, Exception, max_tries=5, factor=2)
-    def update_access_token(self) -> None:
-        """Update the access token."""
-        # Create Basic Auth header using client_id and client_secret
-        auth_string = f"{self.config['client_id']}:{self.config['client_secret']}"
-        auth_bytes = auth_string.encode('ascii')
-        base64_auth = base64.b64encode(auth_bytes).decode('ascii')
-        
-        headers = {
-            'Authorization': f'Basic {base64_auth}',
-            'Content-Type': 'application/x-www-form-urlencoded'
-        }
-        
-        data = {
-            'username': self.config['username'],
-            'password': self.config['password']
-        }
-
-        try:
-            response = requests.post(
-                f"{self._auth_endpoint}?grant_type=password",
-                headers=headers,
-                data=data
-            )
-            response.raise_for_status()
-            auth_response = response.json()
-
-            # Update tokens
-            self._access_token = auth_response["access_token"]
-            
-            # Update expiration
-            expires_in = auth_response.get("expires_in", 3600)
-            now = round(datetime.utcnow().timestamp())
-            self._token_expires_at = int(expires_in) + now
-            
-            # Save to config
-            self._save_token_to_config()
-            
-        except Exception as e:
-            print(f"Failed to update access token: {str(e)}")
-            raise
-
-    def get_auth_headers(self) -> Dict[str, str]:
-        """Get the authentication headers.
+    @property
+    def stream(self) -> RESTStream:
+        """Get the stream instance.
 
         Returns:
-            The authentication headers.
+            The stream instance.
         """
-        if not self._is_token_valid():
+        return self._stream
+
+    def authenticate_request(self, request):
+        """Authenticate the request."""
+        headers = self.get_auth_headers()
+        request.headers.update(headers)
+        return request
+
+    def get_auth_headers(self) -> Dict[str, str]:
+        """Get the authorization headers.
+
+        Returns:
+            A dictionary containing the authorization headers.
+        """
+        if not self.is_token_valid():
             self.update_access_token()
-        return {"Authorization": f"Bearer {self._access_token}"} 
+
+        return {
+            "Authorization": f"Bearer {self._access_token}",
+            "Content-Type": "application/vnd.api+json",
+        }
+
+    def is_token_valid(self) -> bool:
+        """Check if the current access token is valid.
+
+        Returns:
+            True if the token is valid, False otherwise.
+        """
+        if not self._access_token:
+            return False
+
+        if not self._token_expires_at:
+            return False
+
+        now = round(datetime.utcnow().timestamp())
+        return not ((self._token_expires_at - now) < 120)
+
+    def update_access_token(self) -> None:
+        """Update the access token using the OAuth credentials."""
+        # Create Basic Auth header
+        auth_string = f"{self.stream.config['client_id']}:{self.stream.config['client_secret']}"
+        auth_bytes = auth_string.encode("ascii")
+        base64_auth = base64.b64encode(auth_bytes).decode("ascii")
+
+        headers = {
+            "Authorization": f"Basic {base64_auth}",
+            "Content-Type": "application/x-www-form-urlencoded",
+        }
+
+        data = {
+            "grant_type": "password",
+            "username": self.stream.config["username"],
+            "password": self.stream.config["password"],
+        }
+
+        token_response = requests.post(
+            self.TOKEN_URL,
+            headers=headers,
+            data=data,
+            timeout=30,
+        )
+
+        try:
+            token_response.raise_for_status()
+            self.logger.info("OAuth authorization attempt was successful.")
+        except Exception as ex:
+            raise RuntimeError(
+                f"Failed OAuth login, response was '{token_response.json()}'. {ex}"
+            )
+
+        token_json = token_response.json()
+
+        # Update the class variables with new token
+        self._access_token = token_json["access_token"]
+        now = round(datetime.utcnow().timestamp())
+        self._token_expires_at = int(token_json["expires_in"]) + now
+        
+        # Update config with new token and expiration
+        if not hasattr(self.stream._tap, "config_updates"):
+            self.stream._tap.config_updates = {}
+        self.stream._tap.config_updates["access_token"] = self._access_token
+        self.stream._tap.config_updates["token_expires_at"] = self._token_expires_at
+        
+        # Save the updated config to file
+        config_path = self.stream._tap.config_file
+        if config_path:
+            import json
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+            config.update(self.stream._tap.config_updates)
+            with open(config_path, 'w') as f:
+                json.dump(config, f, indent=4)
+            self.logger.info(f"Updated access token saved to config file: {config_path}")
+
+        # Save state and log token
+        self.logger.info(f"New access token obtained: {self._access_token}") 

@@ -1,4 +1,4 @@
-"""TapOptiply entry point."""
+"""Optiply entry point."""
 
 from __future__ import annotations
 
