@@ -77,7 +77,6 @@ class SuppliersStream(OptiplyStream):
         th.Property("type", th.StringType),
         th.Property("globalLocationNumber", th.StringType),
         th.Property("createdFromPublicApi", th.BooleanType),
-        th.Property("lostSalesReaction", th.StringType),
         th.Property("fixedCosts", th.NumberType),
         th.Property("userReplenishmentPeriod", th.NumberType),
         th.Property("emails", th.ArrayType(th.StringType)),
