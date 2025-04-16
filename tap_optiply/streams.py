@@ -80,7 +80,6 @@ class SuppliersStream(OptiplyStream):
         th.Property("lostSalesReaction", th.StringType),
         th.Property("fixedCosts", th.NumberType),
         th.Property("userReplenishmentPeriod", th.NumberType),
-        th.Property("lostSalesMovReaction", th.StringType),
         th.Property("emails", th.ArrayType(th.StringType)),
         th.Property("minimumOrderValue", th.StringType),
         th.Property("containerVolume", th.NumberType),
@@ -95,12 +94,6 @@ class SuppliersStream(OptiplyStream):
         th.Property("remoteIdMap", th.ObjectType()),
         th.Property("remoteDataSyncedToDate", th.DateTimeType),
     ).to_dict()
-
-    def transform_record(self, record: dict) -> dict:
-        """Transform record before emitting."""
-        if "lostSalesReaction" in record and isinstance(record["lostSalesReaction"], (int, float)):
-            record["lostSalesReaction"] = str(record["lostSalesReaction"])
-        return record
 
 
 class SupplierProductsStream(OptiplyStream):
