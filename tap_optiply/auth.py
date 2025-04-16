@@ -1,5 +1,7 @@
 """Authentication handler for Optiply API."""
 import base64
+import json
+import argparse
 from datetime import datetime
 from typing import Dict, Optional
 
@@ -32,10 +34,27 @@ class OptiplyAuthenticator(OAuthAuthenticator):
         super().__init__(stream=stream)
         
         # Initialize token from config if available
-        if "access_token" in self.stream.config:
-            self._access_token = self.stream.config["access_token"]
-        if "token_expires_at" in self.stream.config:
-            self._token_expires_at = self.stream.config["token_expires_at"]
+        self._access_token = stream.config.get("access_token")
+        self._token_expires_at = stream.config.get("token_expires_at")
+
+    def update_config(self, new_fields: Dict[str, str]) -> None:
+        """Update the config.
+
+        Args:
+            new_fields: Dictionary of new fields to update in the config
+        """
+        parser = argparse.ArgumentParser()
+        parser.add_argument('-c', '--config', help='Config file', required=True)
+        _args, unknown = parser.parse_known_args()
+        config_file = _args.config
+        with open(f"{config_file}", 'r') as filetoread:
+            data = filetoread.read()
+        self.logger.info(f"Config file: {data}")
+        config = json.loads(data)
+        config.update(new_fields)
+        self.logger.info(f"Config: {config}")
+        with open(f"{config_file}", 'w') as filetowrite:
+            json.dump(config, filetowrite)
 
     @property
     def stream(self) -> RESTStream:
@@ -122,21 +141,10 @@ class OptiplyAuthenticator(OAuthAuthenticator):
         self._token_expires_at = int(token_json["expires_in"]) + now
         
         # Update config with new token and expiration
-        if not hasattr(self.stream._tap, "config_updates"):
-            self.stream._tap.config_updates = {}
-        self.stream._tap.config_updates["access_token"] = self._access_token
-        self.stream._tap.config_updates["token_expires_at"] = self._token_expires_at
-        
-        # Save the updated config to file
-        config_path = self.stream._tap.config_file
-        if config_path:
-            import json
-            with open(config_path, 'r') as f:
-                config = json.load(f)
-            config.update(self.stream._tap.config_updates)
-            with open(config_path, 'w') as f:
-                json.dump(config, f, indent=4)
-            self.logger.info(f"Updated access token saved to config file: {config_path}")
+        self.update_config({
+            "access_token": self._access_token,
+            "token_expires_at": self._token_expires_at
+        })
 
         # Save state and log token
         self.logger.info(f"New access token obtained: {self._access_token}") 
