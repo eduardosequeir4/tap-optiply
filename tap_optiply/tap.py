@@ -73,8 +73,7 @@ class TapOptiply(Tap):
             streams.SuppliersStream(self),
             streams.SupplierProductsStream(self),
             streams.SellOrdersStream(self),
-            # Temporarily removing sellOrderLines from discovery
-            # streams.SellOrderLinesStream(self),
+            streams.SellOrderLinesStream(self),
             streams.BuyOrdersStream(self),
             streams.BuyOrderLinesStream(self),
             streams.ReceiptLinesStream(self),
