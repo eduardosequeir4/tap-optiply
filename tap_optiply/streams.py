@@ -336,9 +336,9 @@ class SellOrderLinesStream(OptiplyStream):
 
         while not finished:
             try:
-                # Add 5-second delay before making any request
-                self.logger.info("Waiting 5 seconds before making request...")
-                time.sleep(5)
+                # Add 2-second delay before making any request
+                self.logger.info("Waiting 2 seconds before making request...")
+                time.sleep(2)
                 
                 prepared_request = self.prepare_request(
                     context,

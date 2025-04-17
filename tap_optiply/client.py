@@ -36,7 +36,7 @@ class OptiplyStream(RESTStream):
     url_base = "https://api.optiply.com/v1"
 
     # Timeout settings (in seconds)
-    request_timeout = 300  # 5 minutes
+    request_timeout = 60  # 60 seconds default timeout for all streams
     max_retries = 3
     retry_backoff_factor = 1
     retry_status_forcelist = [408, 429, 500, 502, 503, 504]
