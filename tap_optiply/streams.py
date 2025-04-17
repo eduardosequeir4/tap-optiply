@@ -336,6 +336,10 @@ class SellOrderLinesStream(OptiplyStream):
 
         while not finished:
             try:
+                # Add 5-second delay before making any request
+                self.logger.info("Waiting 5 seconds before making request...")
+                time.sleep(5)
+                
                 prepared_request = self.prepare_request(
                     context,
                     next_page_token=next_page_token,
@@ -382,10 +386,6 @@ class SellOrderLinesStream(OptiplyStream):
                 next_page_token = self.get_next_page_token(resp, next_page_token)
                 if not next_page_token:
                     finished = True
-                else:
-                    # Add 1-second delay between page requests for sell order lines
-                    self.logger.info("Waiting 1 second before next page request...")
-                    time.sleep(1)
                     
             except requests.exceptions.Timeout as e:
                 self.logger.error(f"Request timed out: {str(e)}")
