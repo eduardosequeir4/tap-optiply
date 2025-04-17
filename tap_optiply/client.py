@@ -5,8 +5,11 @@ from __future__ import annotations
 import typing as t
 from datetime import datetime
 from urllib.parse import parse_qsl, urlparse
+import time
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from singer_sdk.authenticators import OAuthAuthenticator
 from singer_sdk.helpers.jsonpath import extract_jsonpath
 from singer_sdk.streams import RESTStream
@@ -32,10 +35,29 @@ class OptiplyStream(RESTStream):
     # Base URL
     url_base = "https://api.optiply.com/v1"
 
+    # Timeout settings (in seconds)
+    request_timeout = 300  # 5 minutes
+    max_retries = 3
+    retry_backoff_factor = 1
+    retry_status_forcelist = [408, 429, 500, 502, 503, 504]
+
     def __init__(self, *args, **kwargs):
         """Initialize the stream."""
         super().__init__(*args, **kwargs)
         self._authenticator = None
+        
+        # Configure retry strategy
+        retry_strategy = Retry(
+            total=self.max_retries,
+            backoff_factor=self.retry_backoff_factor,
+            status_forcelist=self.retry_status_forcelist,
+        )
+        
+        # Create a session with the retry strategy
+        self._session = requests.Session()
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        self._session.mount("https://", adapter)
+        self._session.mount("http://", adapter)
 
     @property
     def authenticator(self) -> OAuthAuthenticator:
@@ -75,6 +97,9 @@ class OptiplyStream(RESTStream):
         """
         # Get pagination parameters from parent class
         params = super().get_url_params(context, next_page_token)
+
+        # Add page limit parameter
+        params["page[limit]"] = self.page_size
 
         # Add account ID filter
         params["filter[accountId]"] = self.config["account_id"]
@@ -116,6 +141,7 @@ class OptiplyStream(RESTStream):
         next_page_token: int | None = None
         finished = False
         max_updated_at = None
+        retry_count = 0
 
         while not finished:
             try:
@@ -126,11 +152,18 @@ class OptiplyStream(RESTStream):
                 self.logger.info(f"Making request to: {prepared_request.url}")
                 self.logger.info(f"Request headers: {prepared_request.headers}")
                 
-                resp = self.requests_session.send(prepared_request)
+                resp = self._session.send(prepared_request, timeout=self.request_timeout)
                 self.logger.info(f"Response received with status code: {resp.status_code}")
                 
                 if resp.status_code != 200:
                     self.logger.error(f"Error response from API: {resp.text}")
+                    if resp.status_code == 504:
+                        if retry_count < self.max_retries:
+                            retry_count += 1
+                            wait_time = self.retry_backoff_factor * (2 ** (retry_count - 1))
+                            self.logger.info(f"Gateway timeout. Retrying in {wait_time} seconds... (Attempt {retry_count}/{self.max_retries})")
+                            time.sleep(wait_time)
+                            continue
                     raise requests.exceptions.HTTPError(f"HTTP {resp.status_code}: {resp.text}")
                 
                 records = list(self.parse_response(resp))
@@ -158,7 +191,19 @@ class OptiplyStream(RESTStream):
                 next_page_token = self.get_next_page_token(resp, next_page_token)
                 if not next_page_token:
                     finished = True
-                    
+                else:
+                    # No delay in base class
+                    pass
+                
+            except requests.exceptions.Timeout as e:
+                self.logger.error(f"Request timed out: {str(e)}")
+                if retry_count < self.max_retries:
+                    retry_count += 1
+                    wait_time = self.retry_backoff_factor * (2 ** (retry_count - 1))
+                    self.logger.info(f"Request timed out. Retrying in {wait_time} seconds... (Attempt {retry_count}/{self.max_retries})")
+                    time.sleep(wait_time)
+                    continue
+                raise
             except Exception as e:
                 self.logger.error(f"Error during record retrieval: {str(e)}")
                 raise

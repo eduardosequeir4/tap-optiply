@@ -5,6 +5,7 @@ from __future__ import annotations
 import typing as t
 from datetime import datetime
 from importlib import resources
+import time
 
 import requests
 from singer_sdk import typing as th  # JSON Schema typing helpers
@@ -315,3 +316,91 @@ class SellOrderLinesStream(OptiplyStream):
         th.Property("sellOrderId", th.IntegerType),
         th.Property("updatedAt", th.DateTimeType),
     ).to_dict()
+
+    def get_records(
+        self,
+        context: dict | None,
+    ) -> t.Iterable[dict]:
+        """Return a generator of record-type dictionary objects.
+
+        Args:
+            context: Stream partition or context dictionary.
+
+        Yields:
+            One item per (possibly processed) record in the API.
+        """
+        next_page_token: int | None = None
+        finished = False
+        max_updated_at = None
+        retry_count = 0
+
+        while not finished:
+            try:
+                prepared_request = self.prepare_request(
+                    context,
+                    next_page_token=next_page_token,
+                )
+                self.logger.info(f"Making request to: {prepared_request.url}")
+                self.logger.info(f"Request headers: {prepared_request.headers}")
+                
+                resp = self._session.send(prepared_request, timeout=self.request_timeout)
+                self.logger.info(f"Response received with status code: {resp.status_code}")
+                
+                if resp.status_code != 200:
+                    self.logger.error(f"Error response from API: {resp.text}")
+                    if resp.status_code == 504:
+                        if retry_count < self.max_retries:
+                            retry_count += 1
+                            wait_time = self.retry_backoff_factor * (2 ** (retry_count - 1))
+                            self.logger.info(f"Gateway timeout. Retrying in {wait_time} seconds... (Attempt {retry_count}/{self.max_retries})")
+                            time.sleep(wait_time)
+                            continue
+                    raise requests.exceptions.HTTPError(f"HTTP {resp.status_code}: {resp.text}")
+                
+                records = list(self.parse_response(resp))
+                self.logger.info(f"Parsed {len(records)} records from response")
+                
+                # Update max_updated_at if we have records
+                if records:
+                    for record in records:
+                        # Try to get updatedAt from attributes first
+                        updated_at = (record.get('attributes', {}) or {}).get('updatedAt')
+                        if not updated_at:
+                            # If not in attributes, try root level
+                            updated_at = record.get('updatedAt')
+                        
+                        if updated_at:
+                            if max_updated_at is None or updated_at > max_updated_at:
+                                max_updated_at = updated_at
+
+                # Process and yield records
+                for record in records:
+                    processed_record = self.post_process(record, context)
+                    if processed_record:
+                        yield processed_record
+
+                next_page_token = self.get_next_page_token(resp, next_page_token)
+                if not next_page_token:
+                    finished = True
+                else:
+                    # Add 1-second delay between page requests for sell order lines
+                    self.logger.info("Waiting 1 second before next page request...")
+                    time.sleep(1)
+                    
+            except requests.exceptions.Timeout as e:
+                self.logger.error(f"Request timed out: {str(e)}")
+                if retry_count < self.max_retries:
+                    retry_count += 1
+                    wait_time = self.retry_backoff_factor * (2 ** (retry_count - 1))
+                    self.logger.info(f"Request timed out. Retrying in {wait_time} seconds... (Attempt {retry_count}/{self.max_retries})")
+                    time.sleep(wait_time)
+                    continue
+                raise
+            except Exception as e:
+                self.logger.error(f"Error during record retrieval: {str(e)}")
+                raise
+                
+        # Update state with the maximum updatedAt value after all records are processed
+        if max_updated_at:
+            state_record = {'attributes': {'updatedAt': max_updated_at}}
+            self._increment_stream_state(state_record, context=context)
