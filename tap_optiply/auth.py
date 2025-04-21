@@ -77,7 +77,11 @@ class OptiplyAuthenticator(OAuthAuthenticator):
         Returns:
             A dictionary containing the authorization headers.
         """
-        if not self.is_token_valid():
+        # Always try to refresh token if we don't have one
+        if not self._access_token:
+            self.update_access_token()
+        # Also refresh if token is about to expire
+        elif not self.is_token_valid():
             self.update_access_token()
 
         return {
@@ -98,53 +102,57 @@ class OptiplyAuthenticator(OAuthAuthenticator):
             return False
 
         now = round(datetime.utcnow().timestamp())
-        return not ((self._token_expires_at - now) < 120)
+        # Use a 5-minute buffer instead of 2 minutes
+        return not ((self._token_expires_at - now) < 300)
 
     def update_access_token(self) -> None:
         """Update the access token using the OAuth credentials."""
-        # Create Basic Auth header
-        auth_string = f"{self.stream.config['client_id']}:{self.stream.config['client_secret']}"
-        auth_bytes = auth_string.encode("ascii")
-        base64_auth = base64.b64encode(auth_bytes).decode("ascii")
-
-        headers = {
-            "Authorization": f"Basic {base64_auth}",
-            "Content-Type": "application/x-www-form-urlencoded",
-        }
-
-        data = {
-            "grant_type": "password",
-            "username": self.stream.config["username"],
-            "password": self.stream.config["password"],
-        }
-
-        token_response = requests.post(
-            self.TOKEN_URL,
-            headers=headers,
-            data=data,
-            timeout=30,
-        )
-
         try:
-            token_response.raise_for_status()
-            self.logger.info("OAuth authorization attempt was successful.")
-        except Exception as ex:
-            raise RuntimeError(
-                f"Failed OAuth login, response was '{token_response.json()}'. {ex}"
+            # Create Basic Auth header
+            auth_string = f"{self.stream.config['client_id']}:{self.stream.config['client_secret']}"
+            auth_bytes = auth_string.encode("ascii")
+            base64_auth = base64.b64encode(auth_bytes).decode("ascii")
+
+            headers = {
+                "Authorization": f"Basic {base64_auth}",
+                "Content-Type": "application/x-www-form-urlencoded",
+            }
+
+            data = {
+                "grant_type": "password",
+                "username": self.stream.config["username"],
+                "password": self.stream.config["password"],
+            }
+
+            self.logger.info("Attempting to refresh access token...")
+            token_response = requests.post(
+                self.TOKEN_URL,
+                headers=headers,
+                data=data,
+                timeout=30,
             )
 
-        token_json = token_response.json()
+            token_response.raise_for_status()
+            token_json = token_response.json()
 
-        # Update the class variables with new token
-        self._access_token = token_json["access_token"]
-        now = round(datetime.utcnow().timestamp())
-        self._token_expires_at = int(token_json["expires_in"]) + now
-        
-        # Update config with new token and expiration
-        self.update_config({
-            "access_token": self._access_token,
-            "token_expires_at": self._token_expires_at
-        })
+            # Update the class variables with new token
+            self._access_token = token_json["access_token"]
+            now = round(datetime.utcnow().timestamp())
+            self._token_expires_at = now + int(token_json["expires_in"])
+            
+            # Update config with new token and expiration
+            self.update_config({
+                "access_token": self._access_token,
+                "token_expires_at": self._token_expires_at
+            })
 
-        # Save state and log token
-        self.logger.info(f"New access token obtained: {self._access_token}") 
+            self.logger.info("Successfully refreshed access token")
+            
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Failed to refresh access token: {str(e)}")
+            if hasattr(e.response, 'text'):
+                self.logger.error(f"Response content: {e.response.text}")
+            raise RuntimeError(f"Failed to refresh access token: {str(e)}")
+        except Exception as e:
+            self.logger.error(f"Unexpected error during token refresh: {str(e)}")
+            raise 

@@ -145,6 +145,10 @@ class OptiplyStream(RESTStream):
 
         while not finished:
             try:
+                # Add 2-second delay before making any request
+                self.logger.info("Waiting 2 seconds before making request...")
+                time.sleep(2)
+                
                 prepared_request = self.prepare_request(
                     context,
                     next_page_token=next_page_token,
@@ -155,7 +159,17 @@ class OptiplyStream(RESTStream):
                 resp = self._session.send(prepared_request, timeout=self.request_timeout)
                 self.logger.info(f"Response received with status code: {resp.status_code}")
                 
-                if resp.status_code != 200:
+                if resp.status_code == 401:
+                    self.logger.info("Received 401 error, attempting to refresh token...")
+                    # Force token refresh by clearing the current token
+                    self.authenticator._access_token = None
+                    if retry_count < self.max_retries:
+                        retry_count += 1
+                        continue
+                    else:
+                        self.logger.error("Max retries reached for token refresh")
+                        raise requests.exceptions.HTTPError(f"HTTP {resp.status_code}: {resp.text}")
+                elif resp.status_code != 200:
                     self.logger.error(f"Error response from API: {resp.text}")
                     if resp.status_code == 504:
                         if retry_count < self.max_retries:
@@ -191,9 +205,6 @@ class OptiplyStream(RESTStream):
                 next_page_token = self.get_next_page_token(resp, next_page_token)
                 if not next_page_token:
                     finished = True
-                else:
-                    # No delay in base class
-                    pass
                 
             except requests.exceptions.Timeout as e:
                 self.logger.error(f"Request timed out: {str(e)}")
