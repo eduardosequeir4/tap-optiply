@@ -145,10 +145,6 @@ class OptiplyStream(RESTStream):
 
         while not finished:
             try:
-                # Add 2-second delay before making any request
-                self.logger.info("Waiting 2 seconds before making request...")
-                time.sleep(2)
-                
                 prepared_request = self.prepare_request(
                     context,
                     next_page_token=next_page_token,
