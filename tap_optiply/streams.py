@@ -51,7 +51,7 @@ class ProductsStream(OptiplyStream):
         th.Property("resumingPurchase", th.StringType),
         th.Property("status", th.StringType),
         th.Property("createdAtRemote", th.DateTimeType),
-        th.Property("manualServiceLevel", th.NumberType),
+        th.Property("manualServiceLevel", th.CustomType({"type": ["string", "integer", "null"]})),
         th.Property("remoteIdMap", th.ObjectType()),
         th.Property("remoteDataSyncedToDate", th.DateTimeType),
         th.Property("maximumStock", th.NumberType),
